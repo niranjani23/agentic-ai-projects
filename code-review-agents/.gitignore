@@ -10,3 +10,5 @@ venv/
 review-out/
 .cra/
 .cra-work/
+build/
+dist/
