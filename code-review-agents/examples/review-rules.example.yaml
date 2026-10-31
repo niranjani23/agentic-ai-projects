@@ -1,0 +1,21 @@
+# Copy to the root of the repo you want reviewed as `.review-rules.yaml`.
+# Everything here is "declared": trusted, and never turned into a question.
+version: 1
+
+rules:
+  - id: result-types
+    topic: error-handling
+    statement: Domain code returns Result types; it does not raise
+    severity_cap: low        # team rules can nudge, never block; low is the highest allowed
+  - id: structured-logs
+    topic: logging
+    statement: Logs are structured JSON with request_id and tenant_id
+
+# Findings whose evidence is only in these paths are dropped.
+ignore_paths:
+  - "vendor/**"
+  - "**/generated/**"
+
+# In PR mode, findings in these paths are dropped unless the PR touches the file.
+legacy_paths:
+  - "legacy/**"

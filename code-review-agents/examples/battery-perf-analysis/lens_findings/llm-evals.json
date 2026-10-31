@@ -1,0 +1,74 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "Grounding is claimed in three places (README, system prompt, PDF footer) but enforced by a keyword check, and there are no evals for any LLM stage.",
+  "findings": [
+    {
+      "severity": "high",
+      "confidence": 0.9,
+      "dedupe_key": "grounding-claim",
+      "title": "The evidence validator accepts any text containing a common word, while every PDF promises grounding",
+      "claim": "A recommendation passes if its reasoning contains any of eight everyday words ('price', 'charge', 'gap', ...). Reproduced: a recommendation claiming 'this will add $48,000 per day' is accepted because the reasoning contains 'charge'. `expected_benefit` and `tradeoff` are not checked at all. Every PDF nevertheless prints that all findings are grounded in quantitative tool outputs and that no recommendation was generated without supporting evidence.",
+      "why_it_matters": "The strongest claim the product makes to its reader is not backed by anything that would catch a fabricated number.",
+      "suggested_fix": "Extract every number in the reasoning and expected benefit and require each to match, within a tolerance, a value in the cached analysis results. Reject or flag unmatched numbers, and soften the footer until that check exists.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 51,
+          "quote": "evidence_keywords = [\"dispatch\", \"soc\", \"price\", \"charge\", \"discharge\", \"revenue\", \"gap\", \"interval\"]"
+        },
+        {
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 52,
+          "quote": "if not any(kw in reasoning_lower for kw in evidence_keywords):"
+        },
+        {
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 394,
+          "quote": "\"No recommendations were generated without supporting evidence.\","
+        },
+        {
+          "file": "battery_agent/agents/recommendations.py",
+          "line": 26,
+          "quote": "You MUST NOT invent numbers, claim facts not in the analysis, or give generic advice."
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.8,
+      "dedupe_key": "no-tests",
+      "title": "No eval or regression set for any LLM stage, and the numeric core is untested",
+      "claim": "Nothing can tell you whether a prompt edit or a model change made the recommendations worse. The pandas tools are deterministic and could be pinned with a golden CSV; the LLM stages need a small golden set that records the expected primary driver, number-matching checks and a cost/latency log per run.",
+      "why_it_matters": "Every change to a prompt or the model id is a blind change.",
+      "suggested_fix": "Add a golden-CSV test for the tools, a few recorded end-to-end cases with expected drivers, and a check on the number-matching validator proposed above.",
+      "evidence": [
+        {
+          "kind": "absence",
+          "file": "(repo)",
+          "quote": "no tests/ directory and no test_*.py, *_test.py or *.spec.* files"
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.8,
+      "dedupe_key": "model-args-override-cache",
+      "title": "Saved 'supporting evidence' can be model-authored rather than taken from tool results",
+      "claim": "`generate_recommendations` builds its `supporting_evidence` block from the gap-driver, dispatch and SOC objects the model passes in, falling back to the cache only when they are empty. Since the Recommendation agent has no way to obtain the real objects, what is stored as evidence is whatever it typed.",
+      "why_it_matters": "The audit trail that is supposed to justify each recommendation is itself unverified.",
+      "suggested_fix": "Build `supporting_evidence` exclusively from the run's cached results.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 71,
+          "quote": "\"supporting_evidence\": {"
+        },
+        {
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 28,
+          "quote": "gd = gap_drivers or analysis_tools._results.get(\"gap_drivers\", {})"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "event": "COMMENT",
+  "body": "## Automated review (code-review-agents)\n\n**Action required: 1 critical and 4 high-severity issue(s) found.**\n\n1 critical · 4 high · 16 medium · 10 low · 3 nit\n\n**What this is trying to do.** Take one week of a battery's dispatch data (historical operation versus a perfect-foresight benchmark), quantify the revenue gap, attribute it to a primary and a secondary driver, and return two evidence-grounded recommendations as a UI view and a PDF report. Three LLM sub-agents do this, with pandas tools doing the numeric work.\n\n| ID | Severity | Finding |\n|---|---|---|\n| F-001 | critical | `.env` is committed and holds what looks like a live Anthropic API key |\n| F-002 | high | Recommendation text runs off the page in the PDF |\n| F-003 | high | Tools prefer JSON typed by the model over the authoritative cached results |\n| F-004 | high | The evidence validator accepts any text containing a common word, while every PDF promises grounding |\n| F-005 | high | Per-run state lives in module-level dicts shared by every caller |\n\n_RAG lenses skipped: no RAG pipeline detected._\n\nSee the full review document (`review.md`) for all lenses, the conventions applied, and open questions for the team.",
+  "comments": [
+    {
+      "path": ".env",
+      "line": 1,
+      "side": "RIGHT",
+      "body": "**Critical · Security, privacy & governance**: `.env` is committed and holds what looks like a live Anthropic API key\n\n`.env` is tracked by git and sets 1 variable(s): `ANTHROPIC_API_KEY`. The value's format matches a real Anthropic API key, OpenAI API key (checked by pattern only; the value is not reproduced anywhere in this report). It appears in 1 commit(s) of git history.\n\n**Why it matters:** Anyone who can read the repository can use the credential; on a public repo that is everyone, and automated scanners harvest keys from public GitHub quickly. Deleting the file later does not help, because the value stays in git history.\n\n**Suggested fix:** 1) Revoke and rotate the key now and check the provider's usage log for misuse. 2) `git rm --cached` the file and add it to `.gitignore`. 3) Commit a `.env.example` with placeholder values. 4) Purge history (e.g. `git filter-repo`) only after rotating; rotation is the fix, the rewrite is hygiene.\n\n<sub>F-001 · confidence 0.90 · deterministic check · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/report/pdf_generator.py",
+      "line": 371,
+      "side": "RIGHT",
+      "body": "**High · Accuracy & correctness**: Recommendation text runs off the page in the PDF\n\nThe recommendation table passes plain strings as cell values; ReportLab only wraps `Paragraph` flowables. Reproduced with realistic 300-character recommendation text: each field renders as one line cut off at the page edge (text extends to x=613 on a 612 pt page, and the visible text stops mid-sentence). The two recommendations are the product's main deliverable.\n\n**Why it matters:** A reader of the PDF cannot see the reasoning, expected benefit or tradeoff for either recommendation.\n\n**Suggested fix:** Wrap each cell in `Paragraph(escape(text), style)` using a style that wraps, and add a test that renders a long recommendation and checks that no text block extends past the right margin.\n\n<sub>F-002 · confidence 0.95 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/tools/analysis_tools.py",
+      "line": 290,
+      "side": "RIGHT",
+      "body": "**High · Agent & tool-loop design**: Tools prefer JSON typed by the model over the authoritative cached results\n\n`find_gap_drivers` requires the model to re-type four JSON objects as arguments, and the `or` expression prefers whatever the model supplied over the cached tool outputs. Reproduced: passing `gap_dollars` 9999 produced `total_gap_dollars` 9999 while the cached revenue summary used for the PDF's revenue table still said 1,800, so one report can show two different gaps. The Recommendation agent is worse placed: its only input is the Analysis agent's prose summary, yet it is told to pass the `gap_drivers`, `dispatch_comparison` and `soc_analysis` objects, so it must invent them from prose, and `generate_recommendations` stores them as supporting evidence.\n\n**Why it matters:** It breaks the system's central promise that conclusions come from tool output: a mis-typed or invented number flows straight into the report.\n\n**Suggested fix:** Tools take no model-supplied data. Read only from the run context, remove these parameters from the schemas (or ignore them), and check in code that prerequisite tools ran.\n\n<sub>F-003 · confidence 0.95 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/tools/rec_tools.py",
+      "line": 51,
+      "side": "RIGHT",
+      "body": "**High · LLM grounding & evaluation**: The evidence validator accepts any text containing a common word, while every PDF promises grounding\n\nA recommendation passes if its reasoning contains any of eight everyday words ('price', 'charge', 'gap', ...). Reproduced: a recommendation claiming 'this will add $48,000 per day' is accepted because the reasoning contains 'charge'. `expected_benefit` and `tradeoff` are not checked at all. Every PDF nevertheless prints that all findings are grounded in quantitative tool outputs and that no recommendation was generated without supporting evidence.\n\n**Why it matters:** The strongest claim the product makes to its reader is not backed by anything that would catch a fabricated number.\n\n**Suggested fix:** Extract every number in the reasoning and expected benefit and require each to match, within a tolerance, a value in the cached analysis results. Reject or flag unmatched numbers, and soften the footer until that check exists.\n\n<sub>F-004 · confidence 0.90 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/tools/analysis_tools.py",
+      "line": 15,
+      "side": "RIGHT",
+      "body": "**High · Scalability & cost**: Per-run state lives in module-level dicts shared by every caller\n\n3 module-level mutable container(s) are written during a run: `_results` (battery_agent/tools/analysis_tools.py:15); `_state` (battery_agent/tools/data_tools.py:24); `_results` (battery_agent/tools/rec_tools.py:10). The repo is served by streamlit, which runs concurrent sessions in one process, so two simultaneous runs share these dicts: one run's reset can wipe another's data, and results can cross between users.\n\n**Why it matters:** Hidden global state makes runs non-reentrant. It also couples agents and tools through side channels instead of explicit inputs, which makes them harder to test and reason about.\n\n**Suggested fix:** Create a run-scoped context object (a dataclass holding the DataFrame and cached results) and pass it through orchestrator -> agents -> tools, so each run owns its state.\n\n<sub>F-005 · confidence 0.85 · deterministic check · code-review-agents</sub>"
+    },
+    {
+      "path": "README.md",
+      "line": 77,
+      "side": "RIGHT",
+      "body": "**Medium · Security, privacy & governance**: Raw CSV rows are sent to the model, contradicting the documented privacy design\n\n`load_csv` returns the first five rows, all eight columns, in its tool result, and the agent loop serialises every tool result into the model's context. The README and the orchestrator docstring both say the model never sees CSV rows. Reproduced: the result contains a `preview` of 5 records.\n\n**Why it matters:** Operational data leaves the machine for the LLM provider. Whether five rows matter depends on the data, but the documented guarantee is wrong, and anyone relying on it would approve something they should not.\n\n**Suggested fix:** Drop `preview` (schema and dtypes are enough for the agent), or make it explicit and opt-in, and correct the README and docstring either way.\n\n<sub>F-006 · confidence 0.95 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/orchestrator.py",
+      "line": 140,
+      "side": "RIGHT",
+      "body": "**Medium · Accuracy & correctness**: The battery id in the report comes from the upload's temp-file name\n\nThe Streamlit app saves uploads to a randomly named temp file, and the orchestrator derives the battery id from the file stem. Reproduced: `tmp5r7cim8i.csv` becomes `TMP5R7CIM8I` in the PDF title and subtitle. Any file without a part of five or more characters containing a digit is labelled `BLYTHB1`, whichever battery it is.\n\n**Why it matters:** Every report produced through the UI carries a wrong or meaningless identifier at the top.\n\n**Suggested fix:** Read the id from a column in the data, or take it as an explicit input, and fail loudly when it cannot be determined.\n\n<sub>F-007 · confidence 0.90 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/agents/base.py",
+      "line": 14,
+      "side": "RIGHT",
+      "body": "**Medium · Accuracy & correctness**: `ANTHROPIC_MODEL` is read from the environment at import time, before `load_dotenv()` runs\n\n`battery_agent/orchestrator.py` calls `load_dotenv()` at line 23, but at line 19 it already imported `battery_agent/agents/base.py`, which reads `ANTHROPIC_MODEL` at module level (line 14). The value is frozen at import, so a `ANTHROPIC_MODEL` defined only in a `.env` file is ignored; only a variable exported in the shell takes effect.\n\n**Why it matters:** Documentation says the setting can be overridden via the environment, but the override silently does nothing when it lives in `.env`, which is how most local setups configure it.\n\n**Suggested fix:** Read `ANTHROPIC_MODEL` lazily inside a function (e.g. `def _model(): return os.environ.get(...)`), or call `load_dotenv()` in the entry points before any package import.\n\n<sub>F-008 · confidence 0.85 · deterministic check · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/tools/analysis_tools.py",
+      "line": 317,
+      "side": "RIGHT",
+      "body": "**Medium · Accuracy & correctness**: The primary-driver rule counts negative 'missed revenue' as missed discharge\n\n`abs()` discards the sign. If historical earned more than perfect inside the high-price intervals, `missed_hp_rev` is negative, yet a magnitude above half the gap still selects 'missed discharge during high price periods' and the evidence string says 'leaving $-80.00 unrealised'. Reproduced by calling `find_gap_drivers` with missed revenue -80 and a gap of 100. The 0.5 cut-off is unexplained, and neither driver is reconciled with the total gap; the secondary driver has no revenue impact at all.\n\n**Why it matters:** The headline root cause of the report can be the opposite of what the data shows, and the recommendations are built on it.\n\n**Suggested fix:** Use the signed ratio and require positive missed revenue for the high-price branch. Report a revenue impact for both drivers, check that they do not exceed the gap, and show the unattributed remainder.\n\n<sub>F-009 · confidence 0.85 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/tools/data_tools.py",
+      "line": 85,
+      "side": "RIGHT",
+      "body": "**Medium · Accuracy & correctness**: Numbers are coerced after validation, so bad values vanish without a warning\n\n`validate_schema` counts nulls on the raw frame, but `clean_data` later runs `pd.to_numeric(errors='coerce')` on five numeric columns and only counts dropped rows for the datetime column. Reproduced: six REVENUE cells containing 'TBD' pass validation (status ok, no nulls), `clean_data` reports `rows_dropped` 0, and six revenues become NaN. Because those cells were charging costs, historical revenue rose from 1,560 to 1,680 and the reported gap fell from 53.6% to 50.0%, with no warning anywhere.\n\n**Why it matters:** A data-entry problem silently changes the headline gap figure.\n\n**Suggested fix:** Coerce first, then count NaN per column and fail (or warn loudly with counts) before analysis. Report rows affected per column in the data manifest.\n\n<sub>F-010 · confidence 0.85 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/tools/analysis_tools.py",
+      "line": 75,
+      "side": "RIGHT",
+      "body": "**Medium · Accuracy & correctness**: Missing scenario rows become $0 and report a 100% gap instead of an error\n\n`compute_revenue_summary` treats an absent combination as zero revenue. Reproduced with no `historical/cleared` rows: `validate_schema` returns ok (it lists the scenarios found but never checks the required ones exist), the report states a 100.0% gap of $3,360, while `compare_dispatch` on the same data returns an error. The tools disagree about whether the input is usable.\n\n**Why it matters:** A malformed or partial upload yields a confident but meaningless headline number.\n\n**Suggested fix:** Have `validate_schema` require the two benchmark combinations and return an error naming the missing one.\n\n<sub>F-011 · confidence 0.80 · LLM lens · code-review-agents</sub>"
+    },
+    {
+      "path": "battery_agent/tools/analysis_tools.py",
+      "line": 178,
+      "side": "RIGHT",
+      "body": "**Medium · Accuracy & correctness**: Duplicate timestamps double-count intervals because nothing checks uniqueness\n\n`compare_dispatch` joins historical and perfect on `START_DATETIME` alone, and no step deduplicates or asserts that (scenario, schedule, timestamp) is unique. Reproduced: duplicating three historical rows raised `intervals_compared` from 24 to 27 and inflated every event count derived from the join.\n\n**Why it matters:** Re-exported or concatenated CSVs commonly contain duplicates, and the counts feed the driver attribution.\n\n**Suggested fix:** Assert uniqueness in `clean_data` (error, or dedupe with a warning) and use `merge(..., validate='one_to_one')`.\n\n<sub>F-012 · confidence 0.80 · LLM lens · code-review-agents</sub>"
+    }
+  ],
+  "commit_id": "79dea224708adab35887f11dd6a3d8531644d625"
+}

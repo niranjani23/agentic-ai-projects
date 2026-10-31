@@ -1,0 +1,56 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "The deterministic checks report the absence of tests and CI. Behavioural problems found beyond those: results vanish in the UI, and agent traces are not kept.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.85,
+      "title": "Results disappear after any widget interaction in the Streamlit app",
+      "claim": "Streamlit re-runs the whole script on every widget interaction, and a button is true only in the run where it was clicked. The report is rendered only inside `if run_btn and uploaded_file` and is never stored in `st.session_state` (it is not used anywhere in the app). Clicking Download, or editing the question box, re-runs the script with `run_btn` false, reaches `st.stop()` at line 108, and the results vanish; the user must pay for a new 30-90 second LLM run. This follows from Streamlit's execution model and was not exercised in a browser here.",
+      "why_it_matters": "The most natural next action after seeing the report destroys it.",
+      "suggested_fix": "Store the report in `st.session_state` when the run completes and render from there; show the Run button only to start or re-run.",
+      "evidence": [
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 95,
+          "quote": "if uploaded_file and not run_btn:"
+        },
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 108,
+          "quote": "st.stop()"
+        },
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 113,
+          "quote": "if run_btn and uploaded_file:"
+        },
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 293,
+          "quote": "st.download_button("
+        }
+      ]
+    },
+    {
+      "severity": "low",
+      "confidence": 0.7,
+      "title": "Agent traces are not persisted, so a bad recommendation cannot be debugged afterwards",
+      "claim": "Progress goes to a callback that the UI keeps as the last 30 lines, tool inputs are truncated to 120 characters in the log, and neither model responses nor tool results are stored. There is no run id tying a PDF to the calls that produced it.",
+      "why_it_matters": "When a recommendation is wrong, there is nothing to replay or diff against.",
+      "suggested_fix": "Write a per-run JSONL (run id, messages, tool inputs and outputs, token usage) next to the report.",
+      "evidence": [
+        {
+          "file": "battery_agent/agents/base.py",
+          "line": 77,
+          "quote": "calling {block.name}({json.dumps(block.input)[:120]}...)"
+        },
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 129,
+          "quote": "visible = log_lines[-30:]"
+        }
+      ]
+    }
+  ]
+}

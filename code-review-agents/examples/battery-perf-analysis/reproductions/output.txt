@@ -1,0 +1,17 @@
+R01 load_csv returns raw rows to the model: preview of 5 records (base.py json-dumps every tool result into the model context)
+R02 'TBD' in 6 REVENUE cells: validate_schema=ok critical_nulls={} rows_dropped=0; historical 1560.0 -> 1680.0, gap 53.5714% -> 50.0%
+R03 3 duplicated historical rows: intervals_compared 24 -> 27
+R04 missed revenue = -80 vs gap 100: missed_discharge_during_high_price_periods: Historical dispatched 9.00 MWh vs perfect's 8.00 MWh during 12 high-price intervals (price >= $300.00/MWh), leaving $-80.00 unrealised.
+R05 model passes gap_dollars=9999: find_gap_drivers uses 9999.0 while the cached revenue_summary says 1800.0 (real 1800.0)
+R06 fabricated '$48,000 per day' recommendation: status=ok
+R06b string items in recommendations: AttributeError: 'str' object has no attribute 'keys' (uncaught)
+R07 execute_tool('load_csv', {}): KeyError: 'file_path'
+R08 agent loop at the iteration cap: returns ''
+R09 perfect revenue = 0: gap_pct=None -> TypeError: unsupported format string passed to NoneType.__format__
+R10 Streamlit-style temp upload: tmp48tm1u0e.csv -> battery_id TMP48TM1U0E
+R11 SOC given as 0-1: pct_time_below_20=100.0, soc_constrained_discharge_intervals=6
+R12 historical charged during a spike: missed_discharge_revenue=1800.0 vs true perfect-minus-historical=2700.0
+R13 custom high-price threshold: identify_high_price_intervals used 100.0, analyze_soc used 300.0
+R14 no historical/cleared rows: validate_schema=ok, reported gap_pct=100.0 (gap $3360.0), compare_dispatch=error
+R15 ANTHROPIC_MODEL only in .env: os.environ | base.MODEL = model-from-dotenv-file | claude-sonnet-4-6
+R16 PDF recommendation table: 4 text block(s) reach x=613 on a 612pt page (past the margin => cut off)

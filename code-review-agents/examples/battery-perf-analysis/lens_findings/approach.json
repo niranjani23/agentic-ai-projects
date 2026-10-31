@@ -1,0 +1,89 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "Clean layering (agents, tools, report) and a sound rule that the model works from JSON summaries. The main design question is whether three LLM agent loops earn their cost when the tool order is fixed by the prompts.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.7,
+      "dedupe_key": "fixed-pipeline-as-agents",
+      "title": "A fixed pipeline is run as three LLM agent loops",
+      "claim": "The Data Prep and Analysis agents are told to call a fixed sequence of argument-free tools in a fixed order, so the model makes no decisions there. Each step costs a round trip with a growing message history, and the order is enforced only by prompt text, although the README calls it 'enforced' (line 84). The only step that needs a model is turning the evidence into two recommendations. The plan says the assignment rewards an agentic design, so this may be deliberate; the tradeoff should still be explicit.",
+      "why_it_matters": "Extra cost, latency and nondeterminism with no accuracy benefit, and one malformed turn can derail an otherwise deterministic computation.",
+      "suggested_fix": "Run preparation and analysis as plain function calls, then make one LLM call with a structured-output schema for the recommendations. If the multi-agent shape is the point, keep the agents but enforce order in code, for example with a state machine that exposes only the next legal tool.",
+      "evidence": [
+        {
+          "file": "battery_agent/agents/data_prep.py",
+          "line": 25,
+          "quote": "You MUST call tools in this exact order:"
+        },
+        {
+          "file": "battery_agent/agents/analysis.py",
+          "line": 22,
+          "quote": "You MUST call tools in this exact order:"
+        },
+        {
+          "file": "battery_agent_plan.md",
+          "line": 26,
+          "quote": "exactly what the rubric rewards"
+        },
+        {
+          "file": "README.md",
+          "line": 84,
+          "quote": "Enforced tool ordering"
+        }
+      ]
+    },
+    {
+      "severity": "low",
+      "confidence": 0.7,
+      "title": "The plan promises generalisation, but columns, scenario names and the battery id are hard-coded",
+      "claim": "The design principle says the validator checks column names dynamically with no hard-coded assumptions. The code hard-codes the required columns, the `historical/cleared` and `perfect/cleared` combinations in every analysis tool, and a default battery id of `BLYTHB1`.",
+      "why_it_matters": "A second battery, market or column naming needs code changes in several places, and a wrong default id can reach a report unnoticed.",
+      "suggested_fix": "Move the schema and the benchmark/baseline combination names into one configuration object that the tools receive; make the battery id an explicit input.",
+      "evidence": [
+        {
+          "file": "battery_agent_plan.md",
+          "line": 226,
+          "quote": "schema validator checks column names dynamically; no hardcoded assumptions in prompts"
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 12,
+          "quote": "REQUIRED_COLUMNS = {"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 140,
+          "quote": "battery_id = \"BLYTHB1\""
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.8,
+      "layer": "team",
+      "convention_source": "type-annotations",
+      "title": "Helper functions lack return annotations, unlike most of the codebase",
+      "claim": "Inference over 46 functions shows 94% declare return types. `_fmt_dollar`, `_fmt_pct` and `_round` are exceptions. This is reported only as a convention nudge: the rule is inferred and unconfirmed, so it can never be more than a nit.",
+      "why_it_matters": "Consistency helps readers and type checkers, but this is a team preference, not a defect.",
+      "suggested_fix": "Add return annotations, or answer the open question in the review so the team's actual preference is recorded.",
+      "evidence": [
+        {
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 176,
+          "quote": "def _fmt_dollar(v):"
+        },
+        {
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 181,
+          "quote": "def _fmt_pct(v):"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 41,
+          "quote": "def _round(val, decimals: int = 4):"
+        }
+      ]
+    }
+  ]
+}

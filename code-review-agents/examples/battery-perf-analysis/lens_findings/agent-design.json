@@ -1,0 +1,109 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "The shared tool_use loop is small and readable. It has gaps in its exit paths and error handling, and the hand-off from model to tools lets model-typed JSON override the authoritative cached results.",
+  "findings": [
+    {
+      "severity": "high",
+      "confidence": 0.9,
+      "dedupe_key": "model-args-override-cache",
+      "title": "Tools prefer JSON typed by the model over the authoritative cached results",
+      "claim": "`find_gap_drivers` requires the model to re-type four JSON objects as arguments, and the `or` expression prefers whatever the model supplied over the cached tool outputs. Reproduced: passing `gap_dollars` 9999 produced `total_gap_dollars` 9999 while the cached revenue summary used for the PDF's revenue table still said 1,800, so one report can show two different gaps. The Recommendation agent is worse placed: its only input is the Analysis agent's prose summary, yet it is told to pass the `gap_drivers`, `dispatch_comparison` and `soc_analysis` objects, so it must invent them from prose, and `generate_recommendations` stores them as supporting evidence.",
+      "why_it_matters": "It breaks the system's central promise that conclusions come from tool output: a mis-typed or invented number flows straight into the report.",
+      "suggested_fix": "Tools take no model-supplied data. Read only from the run context, remove these parameters from the schemas (or ignore them), and check in code that prerequisite tools ran.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 290,
+          "quote": "rs = revenue_summary or _results.get(\"revenue_summary\", {})"
+        },
+        {
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 28,
+          "quote": "gd = gap_drivers or analysis_tools._results.get(\"gap_drivers\", {})"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 466,
+          "quote": "\"required\": [\"revenue_summary\", \"high_price_analysis\", \"dispatch_comparison\", \"soc_analysis\"],"
+        },
+        {
+          "file": "battery_agent/agents/recommendations.py",
+          "line": 69,
+          "quote": "\"Call generate_recommendations with both recommendations, the gap_drivers output, \""
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.9,
+      "dedupe_key": "tool-exceptions",
+      "title": "A malformed tool call or tool exception crashes the whole run",
+      "claim": "The loop calls the tool executor with no try/except. Reproduced: `execute_tool('load_csv', {})` raises `KeyError` and `generate_recommendations` with string items raises `AttributeError`; neither is caught, so the exception unwinds to the orchestrator and the whole analysis is reported as failed. Tool results also never set `is_error`, so the model cannot tell a failure from data.",
+      "why_it_matters": "A single bad argument from the model costs the user the entire run instead of a correctable error.",
+      "suggested_fix": "Wrap the executor call, and return a `tool_result` with `is_error: true` and a message the model can act on.",
+      "evidence": [
+        {
+          "file": "battery_agent/agents/base.py",
+          "line": 78,
+          "quote": "result = tool_executor(block.name, block.input)"
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 279,
+          "quote": "return load_csv(inputs[\"file_path\"])"
+        },
+        {
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 43,
+          "quote": "missing = REQUIRED_REC_FIELDS - set(rec.keys())"
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.9,
+      "dedupe_key": "loop-exits",
+      "title": "Loop exits at the iteration cap or on max_tokens return empty or truncated text",
+      "claim": "Reproduced: when the cap is hit the last message is a user turn whose content is a list of dicts, and `_extract_text` only looks for an attribute `.type`, so it returns an empty string even though the log says 'returning partial result'. A `max_tokens` stop (limit 4096) falls into the generic branch and returns possibly truncated text, which the orchestrator accepts as a complete summary because it only tests for emptiness.",
+      "why_it_matters": "A truncated analysis summary is passed on as evidence for the recommendations.",
+      "suggested_fix": "Handle each stop reason explicitly: raise on the cap, and on `max_tokens` either continue or fail loudly.",
+      "evidence": [
+        {
+          "file": "battery_agent/agents/base.py",
+          "line": 91,
+          "quote": "unexpected stop_reason"
+        },
+        {
+          "file": "battery_agent/agents/base.py",
+          "line": 95,
+          "quote": "return _extract_text(messages[-1][\"content\"]) if messages else \"\""
+        },
+        {
+          "file": "battery_agent/agents/base.py",
+          "line": 22,
+          "quote": "if hasattr(block, \"type\") and block.type == \"text\":"
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "The prompt says to stop on critical nulls, but the tool reports success",
+      "claim": "The Data Prep prompt says to stop immediately if `validate_schema` returns critical nulls. The tool returns `status: ok` with a message 'Schema valid but N columns have nulls' (reproduced with six null revenues), so whether the pipeline stops depends on the model's reading of a message string. Nothing in code stops it.",
+      "why_it_matters": "The safeguard exists only as prose, so it fires inconsistently.",
+      "suggested_fix": "Return `status: error` for critical nulls, or have the orchestrator inspect the structured result and halt.",
+      "evidence": [
+        {
+          "file": "battery_agent/agents/data_prep.py",
+          "line": 28,
+          "quote": "If validate_schema returns errors (missing columns or critical nulls), stop immediately and"
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 111,
+          "quote": "\"message\": \"Schema valid.\" if not critical_nulls else f\"Schema valid but {len(critical_nulls)} columns have nulls.\","
+        }
+      ]
+    }
+  ]
+}

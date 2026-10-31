@@ -1,0 +1,167 @@
+{
+  "repo": "https://github.com/niranjani23/multi-agent-battery-perf-analysis",
+  "fingerprint": "e3b0c44298fc1c14",
+  "rules": [
+    {
+      "id": "type-annotations",
+      "topic": "typing",
+      "statement": "Functions declare return type annotations",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 0.935,
+      "sample": 46,
+      "evidence": [
+        "battery_agent/agents/analysis.py:49",
+        "battery_agent/agents/base.py:19",
+        "battery_agent/agents/base.py:27"
+      ],
+      "deviations": [
+        "battery_agent/report/pdf_generator.py:176",
+        "battery_agent/report/pdf_generator.py:181",
+        "battery_agent/tools/analysis_tools.py:41"
+      ],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    },
+    {
+      "id": "docstrings",
+      "topic": "docs",
+      "statement": "Public functions have docstrings",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 0.455,
+      "sample": 33,
+      "evidence": [
+        "battery_agent/agents/analysis.py:49",
+        "battery_agent/agents/base.py:27",
+        "battery_agent/agents/data_prep.py:42"
+      ],
+      "deviations": [
+        "battery_agent/main.py:15",
+        "battery_agent/main.py:56",
+        "battery_agent/main.py:59"
+      ],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    },
+    {
+      "id": "error-signalling",
+      "topic": "error-handling",
+      "statement": "Failures are returned as error values (e.g. {\"status\": \"error\"}) instead of raised",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 0.938,
+      "sample": 16,
+      "evidence": [
+        "battery_agent/orchestrator.py:36",
+        "battery_agent/tools/analysis_tools.py:22",
+        "battery_agent/tools/analysis_tools.py:55"
+      ],
+      "deviations": [
+        "battery_agent/orchestrator.py:29"
+      ],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    },
+    {
+      "id": "logging",
+      "topic": "logging",
+      "statement": "Diagnostics are written with print()",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 1.0,
+      "sample": 7,
+      "evidence": [
+        "battery_agent/main.py:101",
+        "battery_agent/main.py:116",
+        "battery_agent/main.py:81"
+      ],
+      "deviations": [],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    },
+    {
+      "id": "import-style",
+      "topic": "imports",
+      "statement": "Imports between modules of this package are relative",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 0.846,
+      "sample": 13,
+      "evidence": [
+        "battery_agent/agents/analysis.py:12",
+        "battery_agent/agents/analysis.py:13",
+        "battery_agent/agents/data_prep.py:13"
+      ],
+      "deviations": [
+        "battery_agent/main.py:96",
+        "battery_agent/ui/app.py:114"
+      ],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    },
+    {
+      "id": "quote-style",
+      "topic": "style",
+      "statement": "String literals use double quotes",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 0.905,
+      "sample": 1234,
+      "evidence": [],
+      "deviations": [],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    },
+    {
+      "id": "naming-functions",
+      "topic": "naming",
+      "statement": "Functions are snake_case",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 1.0,
+      "sample": 46,
+      "evidence": [
+        "battery_agent/agents/analysis.py:49",
+        "battery_agent/agents/base.py:19",
+        "battery_agent/agents/base.py:27"
+      ],
+      "deviations": [],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    },
+    {
+      "id": "line-length-observed",
+      "topic": "style",
+      "statement": "Lines stay within 100 columns",
+      "provenance": "inferred",
+      "status": "unconfirmed",
+      "adherence": 0.982,
+      "sample": 2340,
+      "evidence": [],
+      "deviations": [],
+      "source": "inferred from code",
+      "enforced_by": null,
+      "severity_cap": "low"
+    }
+  ],
+  "ignore_paths": [],
+  "legacy_paths": [],
+  "codeowners": [],
+  "history": {},
+  "answers": {},
+  "open_questions": [
+    "These 4 patterns are followed almost everywhere: Functions declare return type annotations (94%); Failures are returned as error values (e.g. {\"status\": \"error\"}) instead of raised (94%); Functions are snake_case (100%); Lines stay within 100 columns (98%). Enforce them as team conventions?",
+    "docs: 46% (15/33) of the code follows \"Public functions have docstrings\" (e.g. battery_agent/agents/analysis.py:49, battery_agent/agents/base.py:27; exceptions: battery_agent/main.py:15, battery_agent/main.py:56). Is this a deliberate team convention, or incidental?",
+    "logging: 100% (7/7) of the code follows \"Diagnostics are written with print()\" (e.g. battery_agent/main.py:101, battery_agent/main.py:116). Is this a deliberate team convention, or incidental?",
+    "imports: 85% (11/13) of the code follows \"Imports between modules of this package are relative\" (e.g. battery_agent/agents/analysis.py:12, battery_agent/agents/analysis.py:13; exceptions: battery_agent/main.py:96, battery_agent/ui/app.py:114). Is this a deliberate team convention, or incidental?",
+    "style: 90% (1117/1234) of the code follows \"String literals use double quotes\". Is this a deliberate team convention, or incidental?"
+  ]
+}

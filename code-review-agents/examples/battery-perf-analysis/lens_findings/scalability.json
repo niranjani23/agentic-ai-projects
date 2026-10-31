@@ -1,0 +1,27 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "At one week of 5-minute data (about 1,150 rows) compute and memory are not a concern. What limits scale is concurrent-run isolation (reported by the deterministic check) and the long chain of sequential LLM calls.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.7,
+      "dedupe_key": "fixed-pipeline-as-agents",
+      "title": "About a dozen strictly sequential LLM round trips per run, none parallelisable",
+      "claim": "Each agent loop re-sends its whole history every turn. By the prompts' own tool lists, Data Prep needs at least five calls (four tools plus the final answer), Analysis at least six, and Recommendations at least two. They cannot run in parallel because they share module-level state, so batching several batteries or days means multiplying a 30-90 second run (the UI's own estimate).",
+      "why_it_matters": "Cost and latency grow linearly with the number of batteries analysed; 100 batteries is on the order of 1,300 sequential model calls.",
+      "suggested_fix": "Make the deterministic stages plain code (see the approach finding), keep one model call for the narrative, and pass a run-scoped context so runs can execute concurrently.",
+      "evidence": [
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 137,
+          "quote": "this may take 30–90 seconds"
+        },
+        {
+          "file": "battery_agent/agents/base.py",
+          "line": 56,
+          "quote": "calling model..."
+        }
+      ]
+    }
+  ]
+}

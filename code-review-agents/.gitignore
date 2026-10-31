@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+review-out/
+.cra/
+.cra-work/

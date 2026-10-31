@@ -1,0 +1,56 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "The deterministic checks already report the committed credential and the personal config file. Beyond those: a documented privacy guarantee is not true, and uploaded data is left on disk.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.95,
+      "title": "Raw CSV rows are sent to the model, contradicting the documented privacy design",
+      "claim": "`load_csv` returns the first five rows, all eight columns, in its tool result, and the agent loop serialises every tool result into the model's context. The README and the orchestrator docstring both say the model never sees CSV rows. Reproduced: the result contains a `preview` of 5 records.",
+      "why_it_matters": "Operational data leaves the machine for the LLM provider. Whether five rows matter depends on the data, but the documented guarantee is wrong, and anyone relying on it would approve something they should not.",
+      "suggested_fix": "Drop `preview` (schema and dtypes are enough for the agent), or make it explicit and opt-in, and correct the README and docstring either way.",
+      "evidence": [
+        {
+          "file": "README.md",
+          "line": 77,
+          "quote": "tools return JSON summaries only; Claude never sees CSV rows."
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 59,
+          "quote": "preview = df.head(5).copy()"
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 69,
+          "quote": "\"preview\": preview.to_dict(orient=\"records\"),"
+        },
+        {
+          "file": "battery_agent/agents/base.py",
+          "line": 84,
+          "quote": "\"content\": json.dumps(result),"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 7,
+          "quote": "The orchestrator never touches raw CSV rows directly."
+        }
+      ]
+    },
+    {
+      "severity": "low",
+      "confidence": 0.9,
+      "title": "Uploaded files are written to the temp directory and never removed",
+      "claim": "Uploads are saved with `delete=False` and nothing in the package ever unlinks them (no `unlink`, `remove`, `rmtree` or `TemporaryDirectory` anywhere).",
+      "why_it_matters": "On a shared host, users' operational data accumulates on disk under predictable temp paths.",
+      "suggested_fix": "Wrap the run in `try/finally` and unlink the file, or use `tempfile.TemporaryDirectory()`.",
+      "evidence": [
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 118,
+          "quote": "with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:"
+        }
+      ]
+    }
+  ]
+}

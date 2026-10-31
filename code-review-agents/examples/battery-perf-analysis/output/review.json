@@ -1,0 +1,1923 @@
+{
+  "repo": "https://github.com/niranjani23/multi-agent-battery-perf-analysis",
+  "head_sha": "79dea224708adab35887f11dd6a3d8531644d625",
+  "mode": "audit",
+  "objective_statement": "Take one week of a battery's dispatch data (historical operation versus a perfect-foresight benchmark), quantify the revenue gap, attribute it to a primary and a secondary driver, and return two evidence-grounded recommendations as a UI view and a PDF report. Three LLM sub-agents do this, with pandas tools doing the numeric work.",
+  "verdict": "Action required: 1 critical and 4 high-severity issue(s) found.",
+  "lens_status": {
+    "objective": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 2,
+      "tool_calls": 0,
+      "summary": "The purpose is clear and the README states it well. Two documented behaviours do not work as described: the custom analysis question never reaches any agent, and the 'model never sees CSV rows' claim is false (see Governance). One analytic scope question is open: half of the loaded scenario/schedule combinations are never analysed.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "approach": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 3,
+      "tool_calls": 0,
+      "summary": "Clean layering (agents, tools, report) and a sound rule that the model works from JSON summaries. The main design question is whether three LLM agent loops earn their cost when the tool order is fixed by the prompts.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "scalability": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 1,
+      "tool_calls": 0,
+      "summary": "At one week of 5-minute data (about 1,150 rows) compute and memory are not a concern. What limits scale is concurrent-run isolation (reported by the deterministic check) and the long chain of sequential LLM calls.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "accuracy": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 11,
+      "tool_calls": 0,
+      "summary": "Most findings below were reproduced by running the repository's own functions on synthetic data (no LLM involved). The numeric tools are readable, but several edge cases produce wrong or misleading numbers without any warning, and the PDF truncates the main deliverable.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "governance": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 2,
+      "tool_calls": 0,
+      "summary": "The deterministic checks already report the committed credential and the personal config file. Beyond those: a documented privacy guarantee is not true, and uploaded data is left on disk.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "reliability": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 2,
+      "tool_calls": 0,
+      "summary": "The deterministic checks report the absence of tests and CI. Behavioural problems found beyond those: results vanish in the UI, and agent traces are not kept.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "agent-design": {
+      "pack": "agentic",
+      "status": "ok",
+      "detail": "",
+      "findings": 4,
+      "tool_calls": 0,
+      "summary": "The shared tool_use loop is small and readable. It has gaps in its exit paths and error handling, and the hand-off from model to tools lets model-typed JSON override the authoritative cached results.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "llm-evals": {
+      "pack": "agentic",
+      "status": "ok",
+      "detail": "",
+      "findings": 3,
+      "tool_calls": 0,
+      "summary": "Grounding is claimed in three places (README, system prompt, PDF footer) but enforced by a keyword check, and there are no evals for any LLM stage.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "rag-corpus": {
+      "pack": "rag",
+      "status": "skipped",
+      "detail": "No RAG pipeline detected (needs embedding plus a vector store or retriever). Weak signals: none."
+    },
+    "rag-retrieval": {
+      "pack": "rag",
+      "status": "skipped",
+      "detail": "No RAG pipeline detected (needs embedding plus a vector store or retriever). Weak signals: none."
+    },
+    "rag-generation": {
+      "pack": "rag",
+      "status": "skipped",
+      "detail": "No RAG pipeline detected (needs embedding plus a vector store or retriever). Weak signals: none."
+    },
+    "rag-evals": {
+      "pack": "rag",
+      "status": "skipped",
+      "detail": "No RAG pipeline detected (needs embedding plus a vector store or retriever). Weak signals: none."
+    },
+    "rag-scale": {
+      "pack": "rag",
+      "status": "skipped",
+      "detail": "No RAG pipeline detected (needs embedding plus a vector store or retriever). Weak signals: none."
+    }
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "lens": "governance",
+      "lenses": [
+        "governance"
+      ],
+      "layer": "universal",
+      "severity": "critical",
+      "confidence": 0.9,
+      "title": "`.env` is committed and holds what looks like a live Anthropic API key",
+      "claim": "`.env` is tracked by git and sets 1 variable(s): `ANTHROPIC_API_KEY`. The value's format matches a real Anthropic API key, OpenAI API key (checked by pattern only; the value is not reproduced anywhere in this report). It appears in 1 commit(s) of git history.",
+      "why_it_matters": "Anyone who can read the repository can use the credential; on a public repo that is everyone, and automated scanners harvest keys from public GitHub quickly. Deleting the file later does not help, because the value stays in git history.",
+      "suggested_fix": "1) Revoke and rotate the key now and check the provider's usage log for misuse. 2) `git rm --cached` the file and add it to `.gitignore`. 3) Commit a `.env.example` with placeholder values. 4) Purge history (e.g. `git filter-repo`) only after rotating; rotation is the fix, the rewrite is hygiene.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": ".env",
+          "line": 1,
+          "end_line": null,
+          "quote": "ANTHROPIC_API_KEY=<redacted>",
+          "redacted": true
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "secret:.env",
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-002",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "high",
+      "confidence": 0.95,
+      "title": "Recommendation text runs off the page in the PDF",
+      "claim": "The recommendation table passes plain strings as cell values; ReportLab only wraps `Paragraph` flowables. Reproduced with realistic 300-character recommendation text: each field renders as one line cut off at the page edge (text extends to x=613 on a 612 pt page, and the visible text stops mid-sentence). The two recommendations are the product's main deliverable.",
+      "why_it_matters": "A reader of the PDF cannot see the reasoning, expected benefit or tradeoff for either recommendation.",
+      "suggested_fix": "Wrap each cell in `Paragraph(escape(text), style)` using a style that wraps, and add a test that renders a long recommendation and checks that no text block extends past the right margin.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 371,
+          "end_line": null,
+          "quote": "[\"Action\", rec.get(\"action\", \"\")],",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 377,
+          "end_line": null,
+          "quote": "rec_tbl = Table(rec_tbl_data, colWidths=[1.4 * inch, 5.2 * inch])",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "pdf-no-wrap",
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-003",
+      "lens": "agent-design",
+      "lenses": [
+        "agent-design",
+        "llm-evals"
+      ],
+      "layer": "universal",
+      "severity": "high",
+      "confidence": 0.95,
+      "title": "Tools prefer JSON typed by the model over the authoritative cached results",
+      "claim": "`find_gap_drivers` requires the model to re-type four JSON objects as arguments, and the `or` expression prefers whatever the model supplied over the cached tool outputs. Reproduced: passing `gap_dollars` 9999 produced `total_gap_dollars` 9999 while the cached revenue summary used for the PDF's revenue table still said 1,800, so one report can show two different gaps. The Recommendation agent is worse placed: its only input is the Analysis agent's prose summary, yet it is told to pass the `gap_drivers`, `dispatch_comparison` and `soc_analysis` objects, so it must invent them from prose, and `generate_recommendations` stores them as supporting evidence.\n\nAlso raised by the LLM grounding & evaluation lens: `generate_recommendations` builds its `supporting_evidence` block from the gap-driver, dispatch and SOC objects the model passes in, falling back to the cache only when they are empty. Since the Recommendation agent has no way to obtain the real objects, what is stored as evidence is whatever it typed.",
+      "why_it_matters": "It breaks the system's central promise that conclusions come from tool output: a mis-typed or invented number flows straight into the report.",
+      "suggested_fix": "Tools take no model-supplied data. Read only from the run context, remove these parameters from the schemas (or ignore them), and check in code that prerequisite tools ran.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 290,
+          "end_line": null,
+          "quote": "rs = revenue_summary or _results.get(\"revenue_summary\", {})",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 28,
+          "end_line": null,
+          "quote": "gd = gap_drivers or analysis_tools._results.get(\"gap_drivers\", {})",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 466,
+          "end_line": null,
+          "quote": "\"required\": [\"revenue_summary\", \"high_price_analysis\", \"dispatch_comparison\", \"soc_analysis\"],",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/recommendations.py",
+          "line": 69,
+          "end_line": null,
+          "quote": "\"Call generate_recommendations with both recommendations, the gap_drivers output, \"",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 71,
+          "end_line": null,
+          "quote": "\"supporting_evidence\": {",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "model-args-override-cache",
+      "notes": [],
+      "rationales": {
+        "agent-design": "It breaks the system's central promise that conclusions come from tool output: a mis-typed or invented number flows straight into the report.",
+        "llm-evals": "The audit trail that is supposed to justify each recommendation is itself unverified."
+      },
+      "inline": true
+    },
+    {
+      "id": "F-004",
+      "lens": "llm-evals",
+      "lenses": [
+        "llm-evals"
+      ],
+      "layer": "universal",
+      "severity": "high",
+      "confidence": 0.9,
+      "title": "The evidence validator accepts any text containing a common word, while every PDF promises grounding",
+      "claim": "A recommendation passes if its reasoning contains any of eight everyday words ('price', 'charge', 'gap', ...). Reproduced: a recommendation claiming 'this will add $48,000 per day' is accepted because the reasoning contains 'charge'. `expected_benefit` and `tradeoff` are not checked at all. Every PDF nevertheless prints that all findings are grounded in quantitative tool outputs and that no recommendation was generated without supporting evidence.",
+      "why_it_matters": "The strongest claim the product makes to its reader is not backed by anything that would catch a fabricated number.",
+      "suggested_fix": "Extract every number in the reasoning and expected benefit and require each to match, within a tolerance, a value in the cached analysis results. Reject or flag unmatched numbers, and soften the footer until that check exists.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 51,
+          "end_line": null,
+          "quote": "evidence_keywords = [\"dispatch\", \"soc\", \"price\", \"charge\", \"discharge\", \"revenue\", \"gap\", \"interval\"]",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 52,
+          "end_line": null,
+          "quote": "if not any(kw in reasoning_lower for kw in evidence_keywords):",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 394,
+          "end_line": null,
+          "quote": "\"No recommendations were generated without supporting evidence.\",",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/recommendations.py",
+          "line": 26,
+          "end_line": null,
+          "quote": "You MUST NOT invent numbers, claim facts not in the analysis, or give generic advice.",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "grounding-claim",
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-005",
+      "lens": "scalability",
+      "lenses": [
+        "scalability"
+      ],
+      "layer": "universal",
+      "severity": "high",
+      "confidence": 0.85,
+      "title": "Per-run state lives in module-level dicts shared by every caller",
+      "claim": "3 module-level mutable container(s) are written during a run: `_results` (battery_agent/tools/analysis_tools.py:15); `_state` (battery_agent/tools/data_tools.py:24); `_results` (battery_agent/tools/rec_tools.py:10). The repo is served by streamlit, which runs concurrent sessions in one process, so two simultaneous runs share these dicts: one run's reset can wipe another's data, and results can cross between users.",
+      "why_it_matters": "Hidden global state makes runs non-reentrant. It also couples agents and tools through side channels instead of explicit inputs, which makes them harder to test and reason about.",
+      "suggested_fix": "Create a run-scoped context object (a dataclass holding the DataFrame and cached results) and pass it through orchestrator -> agents -> tools, so each run owns its state.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 15,
+          "end_line": null,
+          "quote": "_results: dict = {}",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 24,
+          "end_line": null,
+          "quote": "_state: dict = {",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 10,
+          "end_line": null,
+          "quote": "_results: dict = {}",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "shared-module-state",
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-006",
+      "lens": "governance",
+      "lenses": [
+        "governance"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.95,
+      "title": "Raw CSV rows are sent to the model, contradicting the documented privacy design",
+      "claim": "`load_csv` returns the first five rows, all eight columns, in its tool result, and the agent loop serialises every tool result into the model's context. The README and the orchestrator docstring both say the model never sees CSV rows. Reproduced: the result contains a `preview` of 5 records.",
+      "why_it_matters": "Operational data leaves the machine for the LLM provider. Whether five rows matter depends on the data, but the documented guarantee is wrong, and anyone relying on it would approve something they should not.",
+      "suggested_fix": "Drop `preview` (schema and dtypes are enough for the agent), or make it explicit and opt-in, and correct the README and docstring either way.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "README.md",
+          "line": 77,
+          "end_line": null,
+          "quote": "tools return JSON summaries only; Claude never sees CSV rows.",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 59,
+          "end_line": null,
+          "quote": "preview = df.head(5).copy()",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 69,
+          "end_line": null,
+          "quote": "\"preview\": preview.to_dict(orient=\"records\"),",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 84,
+          "end_line": null,
+          "quote": "\"content\": json.dumps(result),",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 7,
+          "end_line": null,
+          "quote": "The orchestrator never touches raw CSV rows directly.",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-007",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.9,
+      "title": "The battery id in the report comes from the upload's temp-file name",
+      "claim": "The Streamlit app saves uploads to a randomly named temp file, and the orchestrator derives the battery id from the file stem. Reproduced: `tmp5r7cim8i.csv` becomes `TMP5R7CIM8I` in the PDF title and subtitle. Any file without a part of five or more characters containing a digit is labelled `BLYTHB1`, whichever battery it is.",
+      "why_it_matters": "Every report produced through the UI carries a wrong or meaningless identifier at the top.",
+      "suggested_fix": "Read the id from a column in the data, or take it as an explicit input, and fail loudly when it cannot be determined.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 140,
+          "end_line": null,
+          "quote": "battery_id = \"BLYTHB1\"",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 150,
+          "end_line": null,
+          "quote": "if len(part) >= 5 and any(c.isdigit() for c in part):",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 118,
+          "end_line": null,
+          "quote": "with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-008",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.85,
+      "title": "`ANTHROPIC_MODEL` is read from the environment at import time, before `load_dotenv()` runs",
+      "claim": "`battery_agent/orchestrator.py` calls `load_dotenv()` at line 23, but at line 19 it already imported `battery_agent/agents/base.py`, which reads `ANTHROPIC_MODEL` at module level (line 14). The value is frozen at import, so a `ANTHROPIC_MODEL` defined only in a `.env` file is ignored; only a variable exported in the shell takes effect.",
+      "why_it_matters": "Documentation says the setting can be overridden via the environment, but the override silently does nothing when it lives in `.env`, which is how most local setups configure it.",
+      "suggested_fix": "Read `ANTHROPIC_MODEL` lazily inside a function (e.g. `def _model(): return os.environ.get(...)`), or call `load_dotenv()` in the entry points before any package import.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 14,
+          "end_line": null,
+          "quote": "MODEL = os.environ.get(\"ANTHROPIC_MODEL\", \"claude-sonnet-4-6\")",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 19,
+          "end_line": null,
+          "quote": "from .agents import data_prep, analysis, recommendations",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 23,
+          "end_line": null,
+          "quote": "load_dotenv()",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "env-order:ANTHROPIC_MODEL",
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-009",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.85,
+      "title": "The primary-driver rule counts negative 'missed revenue' as missed discharge",
+      "claim": "`abs()` discards the sign. If historical earned more than perfect inside the high-price intervals, `missed_hp_rev` is negative, yet a magnitude above half the gap still selects 'missed discharge during high price periods' and the evidence string says 'leaving $-80.00 unrealised'. Reproduced by calling `find_gap_drivers` with missed revenue -80 and a gap of 100. The 0.5 cut-off is unexplained, and neither driver is reconciled with the total gap; the secondary driver has no revenue impact at all.",
+      "why_it_matters": "The headline root cause of the report can be the opposite of what the data shows, and the recommendations are built on it.",
+      "suggested_fix": "Use the signed ratio and require positive missed revenue for the high-price branch. Report a revenue impact for both drivers, check that they do not exceed the gap, and show the unattributed remainder.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 317,
+          "end_line": null,
+          "quote": "hp_fraction = abs(missed_hp_rev / gap) if gap else 0",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 319,
+          "end_line": null,
+          "quote": "if hp_fraction > 0.5:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 325,
+          "end_line": null,
+          "quote": "f\"leaving ${missed_hp_rev:.2f} unrealised.\"",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 363,
+          "end_line": null,
+          "quote": "\"secondary_driver\": {",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-010",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.85,
+      "title": "Numbers are coerced after validation, so bad values vanish without a warning",
+      "claim": "`validate_schema` counts nulls on the raw frame, but `clean_data` later runs `pd.to_numeric(errors='coerce')` on five numeric columns and only counts dropped rows for the datetime column. Reproduced: six REVENUE cells containing 'TBD' pass validation (status ok, no nulls), `clean_data` reports `rows_dropped` 0, and six revenues become NaN. Because those cells were charging costs, historical revenue rose from 1,560 to 1,680 and the reported gap fell from 53.6% to 50.0%, with no warning anywhere.",
+      "why_it_matters": "A data-entry problem silently changes the headline gap figure.",
+      "suggested_fix": "Coerce first, then count NaN per column and fail (or warn loudly with counts) before analysis. Report rows affected per column in the data manifest.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 85,
+          "end_line": null,
+          "quote": "null_counts = {",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 138,
+          "end_line": null,
+          "quote": "df = df.dropna(subset=[\"START_DATETIME\"])",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 147,
+          "end_line": null,
+          "quote": "df[col] = pd.to_numeric(df[col], errors=\"coerce\")",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-011",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "Missing scenario rows become $0 and report a 100% gap instead of an error",
+      "claim": "`compute_revenue_summary` treats an absent combination as zero revenue. Reproduced with no `historical/cleared` rows: `validate_schema` returns ok (it lists the scenarios found but never checks the required ones exist), the report states a 100.0% gap of $3,360, while `compare_dispatch` on the same data returns an error. The tools disagree about whether the input is usable.",
+      "why_it_matters": "A malformed or partial upload yields a confident but meaningless headline number.",
+      "suggested_fix": "Have `validate_schema` require the two benchmark combinations and return an error naming the missing one.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 75,
+          "end_line": null,
+          "quote": "hist_rev = hist.get(\"total_revenue\") or 0.0",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 92,
+          "end_line": null,
+          "quote": "scenarios = sorted(df[\"SCENARIO_NAME\"].dropna().unique().tolist()) if \"SCENARIO_NAME\" in df.columns else []",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-012",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "Duplicate timestamps double-count intervals because nothing checks uniqueness",
+      "claim": "`compare_dispatch` joins historical and perfect on `START_DATETIME` alone, and no step deduplicates or asserts that (scenario, schedule, timestamp) is unique. Reproduced: duplicating three historical rows raised `intervals_compared` from 24 to 27 and inflated every event count derived from the join.",
+      "why_it_matters": "Re-exported or concatenated CSVs commonly contain duplicates, and the counts feed the driver attribution.",
+      "suggested_fix": "Assert uniqueness in `clean_data` (error, or dedupe with a warning) and use `merge(..., validate='one_to_one')`.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 178,
+          "end_line": null,
+          "quote": "merged = hist[[\"START_DATETIME\", \"CHARGE_ENERGY\", \"DISCHARGE_ENERGY\", \"REVENUE\"]].merge(",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 180,
+          "end_line": null,
+          "quote": "on=\"START_DATETIME\",",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 138,
+          "end_line": null,
+          "quote": "df = df.dropna(subset=[\"START_DATETIME\"])",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-013",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.75,
+      "title": "'Missed discharge revenue' is the benchmark's revenue, not the revenue that was missed",
+      "claim": "The value sums `REVENUE_perf` over intervals where perfect discharged and historical did not. It never subtracts what historical earned or paid in the same intervals. Reproduced: when historical charged during a price spike (revenue -300 per interval) the function reports 1,800 while the true perfect-minus-historical difference is 2,700. The figure is used as the primary driver's impact and quoted as 'missed revenue' in its evidence text.",
+      "why_it_matters": "The size of the main driver is misreported whenever historical was active in those intervals.",
+      "suggested_fix": "Sum `REVENUE_perf - REVENUE_hist` over the missed-discharge intervals, and name the field for what it measures.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 214,
+          "end_line": null,
+          "quote": "\"missed_discharge_revenue\": _round(merged.loc[missed_discharge_mask, \"REVENUE_perf\"].sum()),",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 334,
+          "end_line": null,
+          "quote": "primary_impact = _round(missed_dis_rev)",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-014",
+      "lens": "agent-design",
+      "lenses": [
+        "agent-design"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.9,
+      "title": "A malformed tool call or tool exception crashes the whole run",
+      "claim": "The loop calls the tool executor with no try/except. Reproduced: `execute_tool('load_csv', {})` raises `KeyError` and `generate_recommendations` with string items raises `AttributeError`; neither is caught, so the exception unwinds to the orchestrator and the whole analysis is reported as failed. Tool results also never set `is_error`, so the model cannot tell a failure from data.",
+      "why_it_matters": "A single bad argument from the model costs the user the entire run instead of a correctable error.",
+      "suggested_fix": "Wrap the executor call, and return a `tool_result` with `is_error: true` and a message the model can act on.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 78,
+          "end_line": null,
+          "quote": "result = tool_executor(block.name, block.input)",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 279,
+          "end_line": null,
+          "quote": "return load_csv(inputs[\"file_path\"])",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/rec_tools.py",
+          "line": 43,
+          "end_line": null,
+          "quote": "missing = REQUIRED_REC_FIELDS - set(rec.keys())",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "tool-exceptions",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-015",
+      "lens": "agent-design",
+      "lenses": [
+        "agent-design"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.9,
+      "title": "Loop exits at the iteration cap or on max_tokens return empty or truncated text",
+      "claim": "Reproduced: when the cap is hit the last message is a user turn whose content is a list of dicts, and `_extract_text` only looks for an attribute `.type`, so it returns an empty string even though the log says 'returning partial result'. A `max_tokens` stop (limit 4096) falls into the generic branch and returns possibly truncated text, which the orchestrator accepts as a complete summary because it only tests for emptiness.",
+      "why_it_matters": "A truncated analysis summary is passed on as evidence for the recommendations.",
+      "suggested_fix": "Handle each stop reason explicitly: raise on the cap, and on `max_tokens` either continue or fail loudly.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 91,
+          "end_line": null,
+          "quote": "unexpected stop_reason",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 95,
+          "end_line": null,
+          "quote": "return _extract_text(messages[-1][\"content\"]) if messages else \"\"",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 22,
+          "end_line": null,
+          "quote": "if hasattr(block, \"type\") and block.type == \"text\":",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "loop-exits",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-016",
+      "lens": "agent-design",
+      "lenses": [
+        "agent-design"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "The prompt says to stop on critical nulls, but the tool reports success",
+      "claim": "The Data Prep prompt says to stop immediately if `validate_schema` returns critical nulls. The tool returns `status: ok` with a message 'Schema valid but N columns have nulls' (reproduced with six null revenues), so whether the pipeline stops depends on the model's reading of a message string. Nothing in code stops it.",
+      "why_it_matters": "The safeguard exists only as prose, so it fires inconsistently.",
+      "suggested_fix": "Return `status: error` for critical nulls, or have the orchestrator inspect the structured result and halt.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/data_prep.py",
+          "line": 28,
+          "end_line": null,
+          "quote": "If validate_schema returns errors (missing columns or critical nulls), stop immediately and",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 111,
+          "end_line": null,
+          "quote": "\"message\": \"Schema valid.\" if not critical_nulls else f\"Schema valid but {len(critical_nulls)} columns have nulls.\",",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-017",
+      "lens": "llm-evals",
+      "lenses": [
+        "llm-evals",
+        "reliability"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.99,
+      "title": "No eval or regression set for any LLM stage, and the numeric core is untested",
+      "claim": "Nothing can tell you whether a prompt edit or a model change made the recommendations worse. The pandas tools are deterministic and could be pinned with a golden CSV; the LLM stages need a small golden set that records the expected primary driver, number-matching checks and a cost/latency log per run.\n\nAlso raised by the Reliability, testing & observability lens: No test directory or test files exist among 34 tracked files, for about 2354 lines of code.",
+      "why_it_matters": "Every change to a prompt or the model id is a blind change.",
+      "suggested_fix": "Add a golden-CSV test for the tools, a few recorded end-to-end cases with expected drivers, and a check on the number-matching validator proposed above.",
+      "evidence": [
+        {
+          "kind": "absence",
+          "file": "(repo)",
+          "line": 0,
+          "end_line": null,
+          "quote": "no tests/ directory and no test_*.py, *_test.py or *.spec.* files",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "no-tests",
+      "notes": [],
+      "rationales": {
+        "llm-evals": "Every change to a prompt or the model id is a blind change.",
+        "reliability": "There is no safety net for refactors, and no way to prove the numeric logic stays correct."
+      },
+      "inline": false
+    },
+    {
+      "id": "F-018",
+      "lens": "objective",
+      "lenses": [
+        "objective"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.95,
+      "title": "The custom analysis question is accepted but never used",
+      "claim": "`user_query` is only logged and copied into the report metadata. `data_prep.run`, `analysis.run` and `recommendations.run` take no query parameter, so the UI text box (README line 36) and the `--query` flag (README line 50) change nothing. Example: a user asks why Tuesday evening lost money and receives the same generic report.",
+      "why_it_matters": "A prominent control that silently does nothing makes the user believe the analysis was steered by their question.",
+      "suggested_fix": "Either remove the field and the flag, or pass `user_query` into the Analysis and Recommendation initial messages and have the report state how the question was addressed.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 38,
+          "end_line": null,
+          "quote": "user_query: str = \"Analyze the battery performance data and provide recommendations.\",",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 82,
+          "end_line": null,
+          "quote": "_log(f\"[orchestrator] query: {user_query}\")",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 161,
+          "end_line": null,
+          "quote": "\"user_query\": user_query,",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/analysis.py",
+          "line": 49,
+          "end_line": null,
+          "quote": "def run(",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "README.md",
+          "line": 36,
+          "end_line": null,
+          "quote": "Optionally customise the analysis question.",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "user-query-ignored",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-019",
+      "lens": "scalability",
+      "lenses": [
+        "approach",
+        "scalability"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.75,
+      "title": "About a dozen strictly sequential LLM round trips per run, none parallelisable",
+      "claim": "Each agent loop re-sends its whole history every turn. By the prompts' own tool lists, Data Prep needs at least five calls (four tools plus the final answer), Analysis at least six, and Recommendations at least two. They cannot run in parallel because they share module-level state, so batching several batteries or days means multiplying a 30-90 second run (the UI's own estimate).\n\nAlso raised by the Approach & architecture lens: The Data Prep and Analysis agents are told to call a fixed sequence of argument-free tools in a fixed order, so the model makes no decisions there. Each step costs a round trip with a growing message history, and the order is enforced only by prompt text, although the README calls it 'enforced' (line 84). The only step that needs a model is turning the evidence into two recommendations. The plan says the assignment rewards an agentic design, so this may be deliberate; the tradeoff should still be explicit.",
+      "why_it_matters": "Cost and latency grow linearly with the number of batteries analysed; 100 batteries is on the order of 1,300 sequential model calls.",
+      "suggested_fix": "Make the deterministic stages plain code (see the approach finding), keep one model call for the narrative, and pass a run-scoped context so runs can execute concurrently.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 137,
+          "end_line": null,
+          "quote": "this may take 30–90 seconds",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 56,
+          "end_line": null,
+          "quote": "calling model...",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/data_prep.py",
+          "line": 25,
+          "end_line": null,
+          "quote": "You MUST call tools in this exact order:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/analysis.py",
+          "line": 22,
+          "end_line": null,
+          "quote": "You MUST call tools in this exact order:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent_plan.md",
+          "line": 26,
+          "end_line": null,
+          "quote": "exactly what the rubric rewards",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "fixed-pipeline-as-agents",
+      "notes": [],
+      "rationales": {
+        "scalability": "Cost and latency grow linearly with the number of batteries analysed; 100 batteries is on the order of 1,300 sequential model calls.",
+        "approach": "Extra cost, latency and nondeterminism with no accuracy benefit, and one malformed turn can derail an otherwise deterministic computation."
+      },
+      "inline": false
+    },
+    {
+      "id": "F-020",
+      "lens": "reliability",
+      "lenses": [
+        "reliability"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.9,
+      "title": "Generated artifacts are committed and there is no .gitignore",
+      "claim": "12 tracked file(s) are generated artifacts (compiled Python bytecode). There is no `.gitignore`, so nothing stops further artifacts, local config or `.env` files from being committed.",
+      "why_it_matters": "Bytecode and caches add noisy diffs and stale files, and a missing .gitignore is the usual root cause of committed secrets.",
+      "suggested_fix": "Add a language-appropriate `.gitignore` (Python: `__pycache__/`, `*.pyc`, `.env`, `.venv/`), then `git rm -r --cached` the artifacts.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/__pycache__/orchestrator.cpython-314.pyc",
+          "line": 0,
+          "end_line": null,
+          "quote": "",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/__pycache__/__init__.cpython-314.pyc",
+          "line": 0,
+          "end_line": null,
+          "quote": "",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/__pycache__/analysis.cpython-314.pyc",
+          "line": 0,
+          "end_line": null,
+          "quote": "",
+          "redacted": false
+        },
+        {
+          "kind": "absence",
+          "file": "(repo)",
+          "line": 0,
+          "end_line": null,
+          "quote": "no .gitignore at the repo root",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "repo-hygiene",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-021",
+      "lens": "reliability",
+      "lenses": [
+        "reliability"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.85,
+      "title": "Results disappear after any widget interaction in the Streamlit app",
+      "claim": "Streamlit re-runs the whole script on every widget interaction, and a button is true only in the run where it was clicked. The report is rendered only inside `if run_btn and uploaded_file` and is never stored in `st.session_state` (it is not used anywhere in the app). Clicking Download, or editing the question box, re-runs the script with `run_btn` false, reaches `st.stop()` at line 108, and the results vanish; the user must pay for a new 30-90 second LLM run. This follows from Streamlit's execution model and was not exercised in a browser here.",
+      "why_it_matters": "The most natural next action after seeing the report destroys it.",
+      "suggested_fix": "Store the report in `st.session_state` when the run completes and render from there; show the Run button only to start or re-run.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 95,
+          "end_line": null,
+          "quote": "if uploaded_file and not run_btn:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 108,
+          "end_line": null,
+          "quote": "st.stop()",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 113,
+          "end_line": null,
+          "quote": "if run_btn and uploaded_file:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 293,
+          "end_line": null,
+          "quote": "st.download_button(",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-022",
+      "lens": "governance",
+      "lenses": [
+        "governance"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.9,
+      "title": "Uploaded files are written to the temp directory and never removed",
+      "claim": "Uploads are saved with `delete=False` and nothing in the package ever unlinks them (no `unlink`, `remove`, `rmtree` or `TemporaryDirectory` anywhere).",
+      "why_it_matters": "On a shared host, users' operational data accumulates on disk under predictable temp paths.",
+      "suggested_fix": "Wrap the run in `try/finally` and unlink the file, or use `tempfile.TemporaryDirectory()`.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 118,
+          "end_line": null,
+          "quote": "with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-023",
+      "lens": "governance",
+      "lenses": [
+        "governance"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.85,
+      "title": "`.claude/settings.local.json` is machine-local config but is committed",
+      "claim": "`.claude/settings.local.json` is a per-user settings file. It contains absolute paths from the author's machine and wildcard shell-command approvals.",
+      "why_it_matters": "It leaks the author's local directory layout, and wildcard approvals (e.g. `pip install:*`) would be pre-approved for anyone who opens the repo with the same tool.",
+      "suggested_fix": "Remove it from git, add `*.local.json` / `.claude/settings.local.json` to `.gitignore`, and commit a reviewed shared `settings.json` if team-wide permissions are wanted.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": ".claude/settings.local.json",
+          "line": 4,
+          "end_line": null,
+          "quote": "\"Bash(mkdir -p \\\"/c/Users/",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": ".claude/settings.local.json",
+          "line": 5,
+          "end_line": null,
+          "quote": "\"Bash(mkdir -p \\\"/c/Users/",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": ".claude/settings.local.json",
+          "line": 8,
+          "end_line": null,
+          "quote": "\"Bash(pip install:*)\",",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "personal-config",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-024",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.8,
+      "title": "The CLI crashes when the benchmark revenue is zero",
+      "claim": "`gap_pct` is None when perfect revenue is 0, and the CLI formats it with `:.1f`. Reproduced: `TypeError: unsupported format string passed to NoneType.__format__`. The Streamlit view guards this case; the CLI does not.",
+      "why_it_matters": "The run finishes, then crashes before saving the PDF.",
+      "suggested_fix": "Format optional numbers through one helper that renders 'N/A' for None, shared by the CLI, the UI and the PDF.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 78,
+          "end_line": null,
+          "quote": "gap_pct = _round((gap / perf_rev * 100) if perf_rev else None)",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/main.py",
+          "line": 127,
+          "end_line": null,
+          "quote": "rev.get('gap_pct', 'N/A'):.1f",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-025",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.7,
+      "title": "Two different 'high price' thresholds can be mixed in one analysis",
+      "claim": "`identify_high_price_intervals` accepts a threshold from the model, while `analyze_soc` always uses the 75th percentile. Reproduced: with threshold 100 the first reports 100 and the second 300 in the same run, and `find_gap_drivers` combines both.",
+      "why_it_matters": "The SOC statistics and the high-price statistics then describe different sets of intervals.",
+      "suggested_fix": "Compute the threshold once, store it in the run context, and have every tool read it from there.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 95,
+          "end_line": null,
+          "quote": "def identify_high_price_intervals(threshold: float | None = None) -> dict:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 103,
+          "end_line": null,
+          "quote": "threshold = float(df[\"PRICE_ENERGY\"].quantile(0.75))",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 235,
+          "end_line": null,
+          "quote": "threshold = float(df[\"PRICE_ENERGY\"].quantile(0.75))",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-026",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.55,
+      "title": "SOC thresholds assume percent units and nothing validates the range",
+      "claim": "The 5% depletion cut-off and the 20%/80% bands assume SOC is a percentage. Reproduced with SOC as a 0-1 fraction: every interval is reported as below 20% and 6 intervals as SOC-constrained. The README documents percent, so this only bites on a different export.",
+      "why_it_matters": "A unit change produces a plausible-looking but wrong SOC story.",
+      "suggested_fix": "Validate that SOC lies in 0-100 (or detect a 0-1 range) in `validate_schema` and name the threshold constants.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 240,
+          "end_line": null,
+          "quote": "low_soc_threshold = 5.0",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 258,
+          "end_line": null,
+          "quote": "\"pct_time_below_20\": _round(((hist[\"SOC\"] < 20).sum() / len(hist) * 100) if len(hist) else None),",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-027",
+      "lens": "accuracy",
+      "lenses": [
+        "accuracy"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.4,
+      "title": "Naive timestamps are assumed to be UTC",
+      "claim": "`clean_data` labels timezone-naive timestamps as UTC. If the source uses market-local time, any time-of-day recommendation ('the evening peak') would be offset. Not demonstrated, since the data's timezone is not documented.",
+      "why_it_matters": "Time-of-day advice depends on the right clock.",
+      "suggested_fix": "Document the source timezone and make it a parameter.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 131,
+          "end_line": null,
+          "quote": "if df[\"START_DATETIME\"].dt.tz is None:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 132,
+          "end_line": null,
+          "quote": "df[\"START_DATETIME\"] = df[\"START_DATETIME\"].dt.tz_localize(\"UTC\")",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-028",
+      "lens": "objective",
+      "lenses": [
+        "objective"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.45,
+      "title": "Expected-schedule rows are loaded and cleaned but never analysed",
+      "claim": "All four scenario/schedule combinations are validated and cleaned, but every analysis tool reads only `historical/cleared` and `perfect/cleared`. The `expected` rows appear only as per-combination revenue totals. If `expected` is the operator's forecast or bid, the gap between expected and cleared is a candidate driver that the primary/secondary attribution cannot see. This depends on what `expected` means in the data, which the repo does not say.",
+      "why_it_matters": "If forecast or bid error matters, the attribution may blame dispatch timing for something that happened upstream.",
+      "suggested_fix": "Confirm with the data owner what `expected` represents. If it is informative, add an expected-versus-cleared comparison as another input to the gap-driver step; if not, drop those rows early.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 172,
+          "end_line": null,
+          "quote": "hist = df[(df[\"SCENARIO_NAME\"] == \"historical\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")].copy()",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 173,
+          "end_line": null,
+          "quote": "perf = df[(df[\"SCENARIO_NAME\"] == \"perfect\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")].copy()",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-029",
+      "lens": "approach",
+      "lenses": [
+        "approach"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.7,
+      "title": "The plan promises generalisation, but columns, scenario names and the battery id are hard-coded",
+      "claim": "The design principle says the validator checks column names dynamically with no hard-coded assumptions. The code hard-codes the required columns, the `historical/cleared` and `perfect/cleared` combinations in every analysis tool, and a default battery id of `BLYTHB1`.",
+      "why_it_matters": "A second battery, market or column naming needs code changes in several places, and a wrong default id can reach a report unnoticed.",
+      "suggested_fix": "Move the schema and the benchmark/baseline combination names into one configuration object that the tools receive; make the battery id an explicit input.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent_plan.md",
+          "line": 226,
+          "end_line": null,
+          "quote": "schema validator checks column names dynamically; no hardcoded assumptions in prompts",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 12,
+          "end_line": null,
+          "quote": "REQUIRED_COLUMNS = {",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 140,
+          "end_line": null,
+          "quote": "battery_id = \"BLYTHB1\"",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-030",
+      "lens": "reliability",
+      "lenses": [
+        "reliability"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.9,
+      "title": "No CI configuration",
+      "claim": "No CI workflow (GitHub Actions, GitLab CI, CircleCI, Jenkins, Azure Pipelines) is present.",
+      "why_it_matters": "Nothing runs tests, linting or secret scanning on pushes and pull requests.",
+      "suggested_fix": "Add a minimal workflow that installs dependencies, runs the tests, and runs a secret scanner on every PR.",
+      "evidence": [
+        {
+          "kind": "absence",
+          "file": "(repo)",
+          "line": 0,
+          "end_line": null,
+          "quote": "no .github/workflows, .gitlab-ci.yml, .circleci, Jenkinsfile or azure-pipelines.yml",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "no-ci",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-031",
+      "lens": "reliability",
+      "lenses": [
+        "reliability"
+      ],
+      "layer": "universal",
+      "severity": "low",
+      "confidence": 0.7,
+      "title": "Agent traces are not persisted, so a bad recommendation cannot be debugged afterwards",
+      "claim": "Progress goes to a callback that the UI keeps as the last 30 lines, tool inputs are truncated to 120 characters in the log, and neither model responses nor tool results are stored. There is no run id tying a PDF to the calls that produced it.",
+      "why_it_matters": "When a recommendation is wrong, there is nothing to replay or diff against.",
+      "suggested_fix": "Write a per-run JSONL (run id, messages, tool inputs and outputs, token usage) next to the report.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/base.py",
+          "line": 77,
+          "end_line": null,
+          "quote": "calling {block.name}({json.dumps(block.input)[:120]}...)",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 129,
+          "end_line": null,
+          "quote": "visible = log_lines[-30:]",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-032",
+      "lens": "approach",
+      "lenses": [
+        "approach"
+      ],
+      "layer": "team",
+      "severity": "nit",
+      "confidence": 0.8,
+      "title": "Helper functions lack return annotations, unlike most of the codebase",
+      "claim": "Inference over 46 functions shows 94% declare return types. `_fmt_dollar`, `_fmt_pct` and `_round` are exceptions. This is reported only as a convention nudge: the rule is inferred and unconfirmed, so it can never be more than a nit.",
+      "why_it_matters": "Consistency helps readers and type checkers, but this is a team preference, not a defect.",
+      "suggested_fix": "Add return annotations, or answer the open question in the review so the team's actual preference is recorded.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 176,
+          "end_line": null,
+          "quote": "def _fmt_dollar(v):",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 181,
+          "end_line": null,
+          "quote": "def _fmt_pct(v):",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 41,
+          "end_line": null,
+          "quote": "def _round(val, decimals: int = 4):",
+          "redacted": false
+        }
+      ],
+      "convention_source": "type-annotations",
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [
+        "team convention `type-annotations` (unconfirmed, inferred); a nudge, not a defect"
+      ],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-033",
+      "lens": "reliability",
+      "lenses": [
+        "reliability"
+      ],
+      "layer": "universal",
+      "severity": "nit",
+      "confidence": 0.95,
+      "title": "Two identical READMEs will drift apart",
+      "claim": "`README.md` and `battery_agent/README.md` have identical content.",
+      "why_it_matters": "Duplicated docs get updated in one place only; this is how setup instructions go stale.",
+      "suggested_fix": "Keep one README and link to it from the other location.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "README.md",
+          "line": 1,
+          "end_line": null,
+          "quote": "# Battery Storage Performance Analysis Agent",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/README.md",
+          "line": 1,
+          "end_line": null,
+          "quote": "# Battery Storage Performance Analysis Agent",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "duplicate-readme",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-034",
+      "lens": "reliability",
+      "lenses": [
+        "reliability"
+      ],
+      "layer": "universal",
+      "severity": "nit",
+      "confidence": 0.9,
+      "title": "README setup command points to a path that does not exist from the README's directory",
+      "claim": "`README.md` line 14 runs `pip install -r requirements.txt`, but `requirements.txt` does not exist relative to `.`. A file with that name exists at `battery_agent/requirements.txt`.",
+      "why_it_matters": "A first-time user following the README hits an immediate error.",
+      "suggested_fix": "Fix the path in the README, or move the file so the documented command works.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "README.md",
+          "line": 14,
+          "end_line": null,
+          "quote": "pip install -r requirements.txt",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "static",
+      "dedupe_key": "readme-path:README.md",
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    }
+  ],
+  "conflicts": [],
+  "dropped": [],
+  "profile": {
+    "repo": "https://github.com/niranjani23/multi-agent-battery-perf-analysis",
+    "fingerprint": "e3b0c44298fc1c14",
+    "rules": [
+      {
+        "id": "type-annotations",
+        "topic": "typing",
+        "statement": "Functions declare return type annotations",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 0.935,
+        "sample": 46,
+        "evidence": [
+          "battery_agent/agents/analysis.py:49",
+          "battery_agent/agents/base.py:19",
+          "battery_agent/agents/base.py:27"
+        ],
+        "deviations": [
+          "battery_agent/report/pdf_generator.py:176",
+          "battery_agent/report/pdf_generator.py:181",
+          "battery_agent/tools/analysis_tools.py:41"
+        ],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      },
+      {
+        "id": "docstrings",
+        "topic": "docs",
+        "statement": "Public functions have docstrings",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 0.455,
+        "sample": 33,
+        "evidence": [
+          "battery_agent/agents/analysis.py:49",
+          "battery_agent/agents/base.py:27",
+          "battery_agent/agents/data_prep.py:42"
+        ],
+        "deviations": [
+          "battery_agent/main.py:15",
+          "battery_agent/main.py:56",
+          "battery_agent/main.py:59"
+        ],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      },
+      {
+        "id": "error-signalling",
+        "topic": "error-handling",
+        "statement": "Failures are returned as error values (e.g. {\"status\": \"error\"}) instead of raised",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 0.938,
+        "sample": 16,
+        "evidence": [
+          "battery_agent/orchestrator.py:36",
+          "battery_agent/tools/analysis_tools.py:22",
+          "battery_agent/tools/analysis_tools.py:55"
+        ],
+        "deviations": [
+          "battery_agent/orchestrator.py:29"
+        ],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      },
+      {
+        "id": "logging",
+        "topic": "logging",
+        "statement": "Diagnostics are written with print()",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 1.0,
+        "sample": 7,
+        "evidence": [
+          "battery_agent/main.py:101",
+          "battery_agent/main.py:116",
+          "battery_agent/main.py:81"
+        ],
+        "deviations": [],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      },
+      {
+        "id": "import-style",
+        "topic": "imports",
+        "statement": "Imports between modules of this package are relative",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 0.846,
+        "sample": 13,
+        "evidence": [
+          "battery_agent/agents/analysis.py:12",
+          "battery_agent/agents/analysis.py:13",
+          "battery_agent/agents/data_prep.py:13"
+        ],
+        "deviations": [
+          "battery_agent/main.py:96",
+          "battery_agent/ui/app.py:114"
+        ],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      },
+      {
+        "id": "quote-style",
+        "topic": "style",
+        "statement": "String literals use double quotes",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 0.905,
+        "sample": 1234,
+        "evidence": [],
+        "deviations": [],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      },
+      {
+        "id": "naming-functions",
+        "topic": "naming",
+        "statement": "Functions are snake_case",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 1.0,
+        "sample": 46,
+        "evidence": [
+          "battery_agent/agents/analysis.py:49",
+          "battery_agent/agents/base.py:19",
+          "battery_agent/agents/base.py:27"
+        ],
+        "deviations": [],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      },
+      {
+        "id": "line-length-observed",
+        "topic": "style",
+        "statement": "Lines stay within 100 columns",
+        "provenance": "inferred",
+        "status": "unconfirmed",
+        "adherence": 0.982,
+        "sample": 2340,
+        "evidence": [],
+        "deviations": [],
+        "source": "inferred from code",
+        "enforced_by": null,
+        "severity_cap": "low"
+      }
+    ],
+    "ignore_paths": [],
+    "legacy_paths": [],
+    "codeowners": [],
+    "history": {},
+    "answers": {},
+    "open_questions": [
+      "These 4 patterns are followed almost everywhere: Functions declare return type annotations (94%); Failures are returned as error values (e.g. {\"status\": \"error\"}) instead of raised (94%); Functions are snake_case (100%); Lines stay within 100 columns (98%). Enforce them as team conventions?",
+      "docs: 46% (15/33) of the code follows \"Public functions have docstrings\" (e.g. battery_agent/agents/analysis.py:49, battery_agent/agents/base.py:27; exceptions: battery_agent/main.py:15, battery_agent/main.py:56). Is this a deliberate team convention, or incidental?",
+      "logging: 100% (7/7) of the code follows \"Diagnostics are written with print()\" (e.g. battery_agent/main.py:101, battery_agent/main.py:116). Is this a deliberate team convention, or incidental?",
+      "imports: 85% (11/13) of the code follows \"Imports between modules of this package are relative\" (e.g. battery_agent/agents/analysis.py:12, battery_agent/agents/analysis.py:13; exceptions: battery_agent/main.py:96, battery_agent/ui/app.py:114). Is this a deliberate team convention, or incidental?",
+      "style: 90% (1117/1234) of the code follows \"String literals use double quotes\". Is this a deliberate team convention, or incidental?"
+    ]
+  },
+  "topology": {
+    "rag_applicable": false,
+    "rag_stages": {},
+    "rag_reason": "No RAG pipeline detected (needs embedding plus a vector store or retriever). Weak signals: none.",
+    "agentic_applicable": true,
+    "agentic_signals": [
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 2,
+        "quote": "Shared Claude tool_use agent loop."
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 36,
+        "quote": "Run the standard tool_use agent loop until the model returns end_turn."
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 58,
+        "quote": "response = client.messages.create("
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 69,
+        "quote": "if response.stop_reason == \"end_turn\":"
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 73,
+        "quote": "if response.stop_reason == \"tool_use\":"
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 76,
+        "quote": "if hasattr(block, \"type\") and block.type == \"tool_use\":"
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 83,
+        "quote": "\"tool_use_id\": block.id,"
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 91,
+        "quote": "_log(f\"  [loop] unexpected stop_reason: {response.stop_reason}\")"
+      }
+    ],
+    "agentic_reason": "8 LLM-call/tool-loop signal(s) found"
+  },
+  "stack": {
+    "languages": {
+      "json": 15,
+      "other": 4,
+      "markdown": 490,
+      "python": 2354,
+      "text": 219
+    },
+    "frameworks": [
+      "anthropic",
+      "numpy",
+      "pandas",
+      "reportlab",
+      "streamlit"
+    ],
+    "deps": [
+      "anthropic",
+      "numpy",
+      "pandas",
+      "python-dotenv",
+      "reportlab",
+      "rich",
+      "streamlit"
+    ],
+    "entrypoints": [
+      "battery_agent/main.py",
+      "battery_agent/ui/app.py"
+    ],
+    "has_tests": false,
+    "has_ci": false,
+    "has_gitignore": false,
+    "readmes": [
+      "README.md",
+      "battery_agent/README.md"
+    ],
+    "web_serving": [
+      "streamlit"
+    ],
+    "total_files": 34
+  },
+  "run": {
+    "tool_version": "0.1.0",
+    "lens_version": "1",
+    "model": "claude-sonnet-5-5",
+    "runner": "replay",
+    "max_inline": 12,
+    "min_confidence": 0.5,
+    "generated_at": "2026-10-31T23:24:15+00:00"
+  }
+}

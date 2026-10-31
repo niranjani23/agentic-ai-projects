@@ -1,0 +1,63 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "objective_statement": "Take one week of a battery's dispatch data (historical operation versus a perfect-foresight benchmark), quantify the revenue gap, attribute it to a primary and a secondary driver, and return two evidence-grounded recommendations as a UI view and a PDF report. Three LLM sub-agents do this, with pandas tools doing the numeric work.",
+  "summary": "The purpose is clear and the README states it well. Two documented behaviours do not work as described: the custom analysis question never reaches any agent, and the 'model never sees CSV rows' claim is false (see Governance). One analytic scope question is open: half of the loaded scenario/schedule combinations are never analysed.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.95,
+      "dedupe_key": "user-query-ignored",
+      "title": "The custom analysis question is accepted but never used",
+      "claim": "`user_query` is only logged and copied into the report metadata. `data_prep.run`, `analysis.run` and `recommendations.run` take no query parameter, so the UI text box (README line 36) and the `--query` flag (README line 50) change nothing. Example: a user asks why Tuesday evening lost money and receives the same generic report.",
+      "why_it_matters": "A prominent control that silently does nothing makes the user believe the analysis was steered by their question.",
+      "suggested_fix": "Either remove the field and the flag, or pass `user_query` into the Analysis and Recommendation initial messages and have the report state how the question was addressed.",
+      "evidence": [
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 38,
+          "quote": "user_query: str = \"Analyze the battery performance data and provide recommendations.\","
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 82,
+          "quote": "_log(f\"[orchestrator] query: {user_query}\")"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 161,
+          "quote": "\"user_query\": user_query,"
+        },
+        {
+          "file": "battery_agent/agents/analysis.py",
+          "line": 49,
+          "quote": "def run("
+        },
+        {
+          "file": "README.md",
+          "line": 36,
+          "quote": "Optionally customise the analysis question."
+        }
+      ]
+    },
+    {
+      "severity": "low",
+      "confidence": 0.45,
+      "title": "Expected-schedule rows are loaded and cleaned but never analysed",
+      "claim": "All four scenario/schedule combinations are validated and cleaned, but every analysis tool reads only `historical/cleared` and `perfect/cleared`. The `expected` rows appear only as per-combination revenue totals. If `expected` is the operator's forecast or bid, the gap between expected and cleared is a candidate driver that the primary/secondary attribution cannot see. This depends on what `expected` means in the data, which the repo does not say.",
+      "why_it_matters": "If forecast or bid error matters, the attribution may blame dispatch timing for something that happened upstream.",
+      "suggested_fix": "Confirm with the data owner what `expected` represents. If it is informative, add an expected-versus-cleared comparison as another input to the gap-driver step; if not, drop those rows early.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 172,
+          "quote": "hist = df[(df[\"SCENARIO_NAME\"] == \"historical\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")].copy()"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 173,
+          "quote": "perf = df[(df[\"SCENARIO_NAME\"] == \"perfect\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")].copy()"
+        }
+      ]
+    }
+  ]
+}
