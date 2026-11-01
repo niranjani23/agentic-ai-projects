@@ -75,5 +75,5 @@
       "body": "**Medium · Accuracy & correctness**: Duplicate timestamps double-count intervals because nothing checks uniqueness\n\n`compare_dispatch` joins historical and perfect on `START_DATETIME` alone, and no step deduplicates or asserts that (scenario, schedule, timestamp) is unique. Reproduced: duplicating three historical rows raised `intervals_compared` from 24 to 27 and inflated every event count derived from the join.\n\n**Why it matters:** Re-exported or concatenated CSVs commonly contain duplicates, and the counts feed the driver attribution.\n\n**Suggested fix:** Assert uniqueness in `clean_data` (error, or dedupe with a warning) and use `merge(..., validate='one_to_one')`.\n\n<sub>F-012 · confidence 0.80 · LLM lens · code-review-agents</sub>"
     }
   ],
-  "commit_id": "79dea224708adab35887f11dd6a3d8531644d625"
+  "commit_id": "3e5aa5d44fc18f128fac3edece62a922bb3012d1"
 }

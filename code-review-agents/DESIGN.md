@@ -107,7 +107,7 @@ GitHub: `--pr owner/repo#N` re-maps comments onto the PR's real diff lines (GitH
 
 **Not established**
 - The lens agents have **not** been run against the live Anthropic API (no key was available in the build environment, and the key committed in the reviewed repo was deliberately not used). `AnthropicLensRunner` is tested only against a scripted client. The lens findings in the example run were authored by Claude from reading the code and loaded through the replay runner. They exercise synthesis, rendering and the PR flow, and show what the review looks like, but they say nothing about the precision or recall of live lens agents.
-- **Posting to GitHub has not been exercised live.** The build environment could not push or post (the Claude GitHub App was not installed for the account), and the target repo has no PRs. Everything up to the API call was verified offline: baseline branches built on a copy of the target repo put all 34 files in the PR diff, the head tree equals `main`, and all 12 inline comments anchored on real diff lines.
+- **Posting to GitHub was exercised once, for real.** A draft PR was opened on the reviewed repo (`review-full` into `review-baseline`, https://github.com/niranjani23/multi-agent-battery-perf-analysis/pull/1) and the review was posted: 1 review with a summary body and 12 inline comments, all accepted by GitHub on real diff lines (checked by reading them back). Note that GitHub echoes diff lines in each comment's `diff_hunk`, so a committed secret on a commented line appears there even though the tool never writes it.
 - No lens eval exists yet.
 - The RAG lens prompts have not been run on a real RAG repo.
 - Convention inference covers Python only. Merge thresholds are untuned.
