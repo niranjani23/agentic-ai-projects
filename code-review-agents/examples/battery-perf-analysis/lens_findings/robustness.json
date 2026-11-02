@@ -1,0 +1,72 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "The code does think about failure (the data step is meant to fail fast, and every stage is wrapped), but the strategy is inconsistent and success is decided by whether a string is empty. As a result, a failure early in the pipeline can still produce a report marked 'ok'.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.7,
+      "title": "A failed stage can still produce a report marked status 'ok'",
+      "claim": "The orchestrator decides that an agent succeeded if its text is non-empty. If validation fails, the Data Prep agent is told to stop and 'report the error clearly', which is non-empty text, so the Analysis agent runs anyway; its tools then all return 'No clean data available', and it writes another non-empty summary. If no valid recommendations were stored, the recommendation agent returns `status: text_only`, which the orchestrator only logs. The final report is built with `status: ok` regardless. Exactly how far this cascades depends on the model's wording, so it was reasoned from the code, not reproduced.",
+      "why_it_matters": "The user can receive a confident-looking report for a run whose input was rejected, which defeats the fail-fast design the README describes.",
+      "suggested_fix": "Decide success from structured results, not text: check the stored `validate_schema` and `clean_data` results before starting analysis, require the four analysis results before recommendations, and set the report status from those checks (with `text_only` treated as a failure or a clearly marked partial result).",
+      "evidence": [
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 93,
+          "quote": "if not data_manifest:"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 109,
+          "quote": "if not analysis_summary:"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 125,
+          "quote": "_log(f\"[orchestrator] recommendations received: status={recs_result.get('status', '?')}\")"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 155,
+          "quote": "\"status\": \"ok\","
+        },
+        {
+          "file": "battery_agent/agents/recommendations.py",
+          "line": 86,
+          "quote": "return rec_tools._results.get(\"recommendations\") or {\"status\": \"text_only\", \"text\": text_result}"
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.85,
+      "dedupe_key": "error-strategy",
+      "title": "Two opposite error strategies: tool bodies swallow every exception, dispatchers let them crash the run",
+      "claim": "Nine tool functions wrap their whole body in `except Exception` and return `{'status': 'error', 'message': str(exc)}`, so a programming bug (a typo'd column, a `None` format) reaches the model as if it were a data problem, with no traceback. Meanwhile argument handling in the dispatchers and the recommendation validator are not wrapped, so a missing key raises straight through the agent loop and fails the entire run (reproduced as `KeyError` and `AttributeError`).",
+      "why_it_matters": "Real bugs are hidden where they should be loud, and recoverable input mistakes are fatal where they should be reported back to the model.",
+      "suggested_fix": "Separate expected from unexpected errors. Validate tool inputs up front and return a structured `is_error` result for bad input or bad data; let genuine exceptions propagate to one handler in the loop that logs the traceback and returns a tool error. Remove the blanket `except Exception` from the tool bodies.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 71,
+          "quote": "except Exception as exc:"
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 72,
+          "quote": "return {\"status\": \"error\", \"message\": str(exc)}"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 92,
+          "quote": "return {\"status\": \"error\", \"message\": str(exc)}"
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 279,
+          "quote": "return load_csv(inputs[\"file_path\"])"
+        }
+      ]
+    }
+  ]
+}

@@ -36,6 +36,7 @@ from ..models import (
 from ..lenses.catalog import ALL_LENSES, LENS_VERSION
 from ..scout.redact import redact_secrets
 from ..scout.snapshot import Snapshot
+from ..scout.structure import compute_structure
 from ..scout.stack import _CI_RE, _TEST_RE, StackInfo
 from ..scout.topology import Topology
 
@@ -219,7 +220,8 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 # poor importance signal (a certain "no tests" is not more important than a likely wrong number).
 LENS_PRIORITY = [
     "governance", "accuracy", "rag-corpus", "rag-retrieval", "rag-generation", "agent-design", "llm-evals",
-    "rag-evals", "objective", "scalability", "rag-scale", "approach", "reliability",
+    "robustness", "rag-evals", "objective", "scalability", "rag-scale", "extensibility", "design-patterns",
+    "approach", "maintainability", "reliability",
 ]
 
 
@@ -318,6 +320,72 @@ def detect_conflicts(findings: list[Finding]) -> list[Conflict]:
     return out
 
 
+PER_DIMENSION_RESERVE = 2
+
+
+def _dimension(f: Finding) -> str:
+    spec = ALL_LENSES.get(f.lens)
+    return spec.dimension if spec else "other"
+
+
+def select_inline(findings: list[Finding], budget: int, min_confidence: float) -> None:
+    """Choose which findings become inline PR comments (the precision budget).
+
+    Eligible: confident, not a nit, and anchored on a real line (repository-wide findings stay in the document).
+    Selection, in order, until the budget runs out:
+      1. every eligible critical and high finding;
+      2. topping up EACH dimension to PER_DIMENSION_RESERVE (severe findings count) with its best remaining findings (product, engineering,
+         operations, agentic, rag), so correctness findings cannot crowd design and maintainability out of the PR;
+      3. the rest tier by tier, rotating across dimensions within a severity tier.
+    `findings` must already be ranked.
+    """
+    for f in findings:
+        f.inline = False
+    eligible = [
+        f for f in findings
+        if f.severity != "nit" and f.confidence >= min_confidence and any(e.kind == "line" and e.line for e in f.evidence)
+    ]
+    chosen: list[Finding] = []
+
+    def take(f: Finding) -> None:
+        if len(chosen) < budget and f not in chosen:
+            chosen.append(f)
+
+    per_dim: dict[str, int] = {}
+    for f in eligible:
+        if f.severity in {"critical", "high"}:
+            take(f)
+            per_dim[_dimension(f)] = per_dim.get(_dimension(f), 0) + 1  # severe findings count toward their dimension's reserve
+    for prefer_new_lens in (True, False):  # within a dimension, spread slots across lenses before doubling up
+        for f in eligible:
+            d = _dimension(f)
+            if f in chosen or per_dim.get(d, 0) >= PER_DIMENSION_RESERVE:
+                continue
+            if prefer_new_lens and any(c.lens == f.lens for c in chosen):
+                continue
+            if len(chosen) < budget:
+                per_dim[d] = per_dim.get(d, 0) + 1
+                take(f)
+    # Fill: severity tier by tier; inside a tier, rotate across dimensions (best first in each) instead of
+    # pure rank order, so equally severe design and correctness findings share the remaining slots.
+    from ..models import SEVERITY_ORDER
+
+    for sev in SEVERITY_ORDER:
+        buckets: dict[str, list[Finding]] = {}
+        for f in eligible:
+            if f.severity == sev and f not in chosen:
+                buckets.setdefault(_dimension(f), []).append(f)
+        while any(buckets.values()) and len(chosen) < budget:
+            for dim in list(buckets):
+                if buckets[dim] and len(chosen) < budget:
+                    seen = {c.lens for c in chosen}
+                    pick = next((f for f in buckets[dim] if f.lens not in seen), buckets[dim][0])  # new lens first
+                    buckets[dim].remove(pick)
+                    take(pick)
+    for f in chosen:
+        f.inline = True
+
+
 def verdict_for(findings: list[Finding]) -> str:
     counts = {s: sum(1 for f in findings if f.severity == s) for s in SEVERITY_RANK}
     if counts["critical"]:
@@ -359,16 +427,9 @@ def synthesize(
         dropped.extend(d)
 
     merged = sorted(merge_duplicates(raw), key=_sort_key)
-    inline_budget = options.max_inline
     for i, f in enumerate(merged, start=1):
         f.id = f"F-{i:03d}"
-        # Precision budget: only confident, non-nit findings that point at a real line can become inline PR
-        # comments, capped at max_inline. Repository-wide findings (e.g. "no tests") stay in the document.
-        anchored = any(e.kind == "line" and e.line for e in f.evidence)
-        eligible = anchored and f.confidence >= options.min_confidence and f.severity != "nit"
-        f.inline = bool(eligible and inline_budget > 0)
-        if f.inline:
-            inline_budget -= 1
+    select_inline(merged, options.max_inline, options.min_confidence)
 
     return Review(
         repo=snap.remote or snap.root.name,
@@ -382,6 +443,7 @@ def synthesize(
         dropped=dropped,
         profile=profile,
         topology=topo.to_dict(),
+        structure=compute_structure(snap).to_dict() if snap.code_paths("python") else {},
         stack=stack.to_dict(),
         run={
             "tool_version": __version__,

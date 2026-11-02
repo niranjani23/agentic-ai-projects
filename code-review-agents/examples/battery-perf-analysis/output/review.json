@@ -23,6 +23,51 @@
       "summary": "Clean layering (agents, tools, report) and a sound rule that the model works from JSON summaries. The main design question is whether three LLM agent loops earn their cost when the tool order is fixed by the prompts.",
       "model": "recorded (authored by Claude from reading the code; not an API run)"
     },
+    "design-patterns": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 2,
+      "tool_calls": 0,
+      "summary": "The good parts are worth keeping: one shared tool_use loop (`run_agent_loop`) instead of three copies, thin agent modules that only hold a prompt and a call, and tools that return JSON rather than prose. No heavier pattern is needed for three agents. The weaknesses are at the seams: each tool is defined three times by hand, and the parts talk through module-level globals instead of explicit inputs.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "extensibility": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 3,
+      "tool_calls": 0,
+      "summary": "The three most likely next changes are a new analysis step, a second battery or market, and a new output format. Today each touches many files, because the step list, the scenario names and the report shape are spelled out by hand in several places. No import cycles; the orchestrator is the only highly coupled module (imports 7 internal modules), which is expected for an orchestrator.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "robustness": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 2,
+      "tool_calls": 0,
+      "summary": "The code does think about failure (the data step is meant to fail fast, and every stage is wrapped), but the strategy is inconsistent and success is decided by whether a string is empty. As a result, a failure early in the pipeline can still produce a report marked 'ok'.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "maintainability": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 3,
+      "tool_calls": 0,
+      "summary": "Most functions are short and clearly named, and the modules map cleanly onto the README's architecture. Maintenance cost concentrates in two oversized functions and in result data passed around as untyped nested dicts whose key strings are repeated across producers and renderers.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
+    "reliability": {
+      "pack": "general",
+      "status": "ok",
+      "detail": "",
+      "findings": 2,
+      "tool_calls": 0,
+      "summary": "The deterministic checks report the absence of tests and CI. Behavioural problems found beyond those: results vanish in the UI, and agent traces are not kept.",
+      "model": "recorded (authored by Claude from reading the code; not an API run)"
+    },
     "scalability": {
       "pack": "general",
       "status": "ok",
@@ -48,15 +93,6 @@
       "findings": 2,
       "tool_calls": 0,
       "summary": "The deterministic checks already report the committed credential and the personal config file. Beyond those: a documented privacy guarantee is not true, and uploaded data is left on disk.",
-      "model": "recorded (authored by Claude from reading the code; not an API run)"
-    },
-    "reliability": {
-      "pack": "general",
-      "status": "ok",
-      "detail": "",
-      "findings": 2,
-      "tool_calls": 0,
-      "summary": "The deterministic checks report the absence of tests and CI. Behavioural problems found beyond those: results vanish in the UI, and agent traces are not kept.",
       "model": "recorded (authored by Claude from reading the code; not an API run)"
     },
     "agent-design": {
@@ -114,7 +150,7 @@
       "severity": "critical",
       "confidence": 0.9,
       "title": "`.env` is committed and holds what looks like a live Anthropic API key",
-      "claim": "`.env` is tracked by git and sets 1 variable(s): `ANTHROPIC_API_KEY`. The value's format matches a real Anthropic API key, OpenAI API key (checked by pattern only; the value is not reproduced anywhere in this report). It appears in 1 commit(s) of git history.",
+      "claim": "`.env` is tracked by git and sets 1 variable(s): `ANTHROPIC_API_KEY`. The value's format matches a real Anthropic API key, OpenAI API key (checked by pattern only; the value is not reproduced anywhere in this report). It appears in 2 commit(s) of git history.",
       "why_it_matters": "Anyone who can read the repository can use the credential; on a public repo that is everyone, and automated scanners harvest keys from public GitHub quickly. Deleting the file later does not help, because the value stays in git history.",
       "suggested_fix": "1) Revoke and rotate the key now and check the provider's usage log for misuse. 2) `git rm --cached` the file and add it to `.gitignore`. 3) Commit a `.env.example` with placeholder values. 4) Purge history (e.g. `git filter-repo`) only after rotating; rotation is the fix, the rewrite is hygiene.",
       "evidence": [
@@ -300,13 +336,14 @@
       "id": "F-005",
       "lens": "scalability",
       "lenses": [
+        "design-patterns",
         "scalability"
       ],
       "layer": "universal",
       "severity": "high",
-      "confidence": 0.85,
+      "confidence": 0.9,
       "title": "Per-run state lives in module-level dicts shared by every caller",
-      "claim": "3 module-level mutable container(s) are written during a run: `_results` (battery_agent/tools/analysis_tools.py:15); `_state` (battery_agent/tools/data_tools.py:24); `_results` (battery_agent/tools/rec_tools.py:10). The repo is served by streamlit, which runs concurrent sessions in one process, so two simultaneous runs share these dicts: one run's reset can wipe another's data, and results can cross between users.",
+      "claim": "3 module-level mutable container(s) are written during a run: `_results` (battery_agent/tools/analysis_tools.py:15); `_state` (battery_agent/tools/data_tools.py:24); `_results` (battery_agent/tools/rec_tools.py:10). The repo is served by streamlit, which runs concurrent sessions in one process, so two simultaneous runs share these dicts: one run's reset can wipe another's data, and results can cross between users.\n\nAlso raised by the Design patterns & abstractions lens: The analysis tools reach into `data_tools._state` for the DataFrame, the orchestrator and the recommendation tool read private `_results` dicts of another module, and each agent clears another module's cache before running. These are side channels: no function signature shows what a step needs or produces, and the call order is the only thing making them correct (temporal coupling).",
       "why_it_matters": "Hidden global state makes runs non-reentrant. It also couples agents and tools through side channels instead of explicit inputs, which makes them harder to test and reason about.",
       "suggested_fix": "Create a run-scoped context object (a dataclass holding the DataFrame and cached results) and pass it through orchestrator -> agents -> tools, so each run owns its state.",
       "evidence": [
@@ -333,6 +370,22 @@
           "end_line": null,
           "quote": "_results: dict = {}",
           "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 19,
+          "end_line": null,
+          "quote": "return data_tools._state.get(\"clean_df\")",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 133,
+          "end_line": null,
+          "quote": "revenue_summary = analysis_tools._results.get(\"revenue_summary\", {})",
+          "redacted": false
         }
       ],
       "convention_source": null,
@@ -340,7 +393,10 @@
       "origin": "static",
       "dedupe_key": "shared-module-state",
       "notes": [],
-      "rationales": {},
+      "rationales": {
+        "scalability": "Hidden global state makes runs non-reentrant. It also couples agents and tools through side channels instead of explicit inputs, which makes them harder to test and reason about.",
+        "design-patterns": "Beyond the concurrency risk, this is what makes the tools hard to test in isolation and hard to reuse: you cannot call `compare_dispatch(df)` on a DataFrame; you must first run the loading tools to populate a global."
+      },
       "inline": true
     },
     {
@@ -553,7 +609,7 @@
       "dedupe_key": null,
       "notes": [],
       "rationales": {},
-      "inline": true
+      "inline": false
     },
     {
       "id": "F-010",
@@ -600,7 +656,7 @@
       "dedupe_key": null,
       "notes": [],
       "rationales": {},
-      "inline": true
+      "inline": false
     },
     {
       "id": "F-011",
@@ -639,7 +695,7 @@
       "dedupe_key": null,
       "notes": [],
       "rationales": {},
-      "inline": true
+      "inline": false
     },
     {
       "id": "F-012",
@@ -686,7 +742,7 @@
       "dedupe_key": null,
       "notes": [],
       "rationales": {},
-      "inline": true
+      "inline": false
     },
     {
       "id": "F-013",
@@ -772,7 +828,7 @@
       "dedupe_key": "tool-exceptions",
       "notes": [],
       "rationales": {},
-      "inline": false
+      "inline": true
     },
     {
       "id": "F-015",
@@ -819,7 +875,7 @@
       "dedupe_key": "loop-exits",
       "notes": [],
       "rationales": {},
-      "inline": false
+      "inline": true
     },
     {
       "id": "F-016",
@@ -858,7 +914,7 @@
       "dedupe_key": null,
       "notes": [],
       "rationales": {},
-      "inline": false
+      "inline": true
     },
     {
       "id": "F-017",
@@ -871,7 +927,7 @@
       "severity": "medium",
       "confidence": 0.99,
       "title": "No eval or regression set for any LLM stage, and the numeric core is untested",
-      "claim": "Nothing can tell you whether a prompt edit or a model change made the recommendations worse. The pandas tools are deterministic and could be pinned with a golden CSV; the LLM stages need a small golden set that records the expected primary driver, number-matching checks and a cost/latency log per run.\n\nAlso raised by the Reliability, testing & observability lens: No test directory or test files exist among 34 tracked files, for about 2354 lines of code.",
+      "claim": "Nothing can tell you whether a prompt edit or a model change made the recommendations worse. The pandas tools are deterministic and could be pinned with a golden CSV; the LLM stages need a small golden set that records the expected primary driver, number-matching checks and a cost/latency log per run.\n\nAlso raised by the Testing & observability lens: No test directory or test files exist among 34 tracked files, for about 2354 lines of code.",
       "why_it_matters": "Every change to a prompt or the model id is a blind change.",
       "suggested_fix": "Add a golden-CSV test for the tools, a few recorded end-to-end cases with expected drivers, and a check on the number-matching validator proposed above.",
       "evidence": [
@@ -897,6 +953,124 @@
     },
     {
       "id": "F-018",
+      "lens": "robustness",
+      "lenses": [
+        "robustness"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.85,
+      "title": "Two opposite error strategies: tool bodies swallow every exception, dispatchers let them crash the run",
+      "claim": "Nine tool functions wrap their whole body in `except Exception` and return `{'status': 'error', 'message': str(exc)}`, so a programming bug (a typo'd column, a `None` format) reaches the model as if it were a data problem, with no traceback. Meanwhile argument handling in the dispatchers and the recommendation validator are not wrapped, so a missing key raises straight through the agent loop and fails the entire run (reproduced as `KeyError` and `AttributeError`).",
+      "why_it_matters": "Real bugs are hidden where they should be loud, and recoverable input mistakes are fatal where they should be reported back to the model.",
+      "suggested_fix": "Separate expected from unexpected errors. Validate tool inputs up front and return a structured `is_error` result for bad input or bad data; let genuine exceptions propagate to one handler in the loop that logs the traceback and returns a tool error. Remove the blanket `except Exception` from the tool bodies.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 71,
+          "end_line": null,
+          "quote": "except Exception as exc:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 72,
+          "end_line": null,
+          "quote": "return {\"status\": \"error\", \"message\": str(exc)}",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 92,
+          "end_line": null,
+          "quote": "return {\"status\": \"error\", \"message\": str(exc)}",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 279,
+          "end_line": null,
+          "quote": "return load_csv(inputs[\"file_path\"])",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "error-strategy",
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-019",
+      "lens": "robustness",
+      "lenses": [
+        "robustness"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.7,
+      "title": "A failed stage can still produce a report marked status 'ok'",
+      "claim": "The orchestrator decides that an agent succeeded if its text is non-empty. If validation fails, the Data Prep agent is told to stop and 'report the error clearly', which is non-empty text, so the Analysis agent runs anyway; its tools then all return 'No clean data available', and it writes another non-empty summary. If no valid recommendations were stored, the recommendation agent returns `status: text_only`, which the orchestrator only logs. The final report is built with `status: ok` regardless. Exactly how far this cascades depends on the model's wording, so it was reasoned from the code, not reproduced.",
+      "why_it_matters": "The user can receive a confident-looking report for a run whose input was rejected, which defeats the fail-fast design the README describes.",
+      "suggested_fix": "Decide success from structured results, not text: check the stored `validate_schema` and `clean_data` results before starting analysis, require the four analysis results before recommendations, and set the report status from those checks (with `text_only` treated as a failure or a clearly marked partial result).",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 93,
+          "end_line": null,
+          "quote": "if not data_manifest:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 109,
+          "end_line": null,
+          "quote": "if not analysis_summary:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 125,
+          "end_line": null,
+          "quote": "_log(f\"[orchestrator] recommendations received: status={recs_result.get('status', '?')}\")",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 155,
+          "end_line": null,
+          "quote": "\"status\": \"ok\",",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/recommendations.py",
+          "line": 86,
+          "end_line": null,
+          "quote": "return rec_tools._results.get(\"recommendations\") or {\"status\": \"text_only\", \"text\": text_result}",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-020",
       "lens": "objective",
       "lenses": [
         "objective"
@@ -956,10 +1130,10 @@
       "dedupe_key": "user-query-ignored",
       "notes": [],
       "rationales": {},
-      "inline": false
+      "inline": true
     },
     {
-      "id": "F-019",
+      "id": "F-021",
       "lens": "scalability",
       "lenses": [
         "approach",
@@ -1026,7 +1200,306 @@
       "inline": false
     },
     {
-      "id": "F-020",
+      "id": "F-022",
+      "lens": "maintainability",
+      "lenses": [
+        "extensibility",
+        "maintainability"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.9,
+      "title": "Results travel as untyped nested dicts whose keys are retyped in four places",
+      "claim": "Keys such as `historical_cleared_total_revenue` and `gap_pct` are written in the tool that produces them and again in the PDF generator, the Streamlit page and the CLI. The same number even has two names (`gap_pct` in the revenue summary, `total_gap_pct` in the gap drivers). A renamed or misspelled key does not fail; it silently becomes `None` or 'N/A' in one output.\n\nAlso raised by the Extensibility & modularity lens: The orchestrator calls the PDF generator directly, and the PDF, the Streamlit page and the CLI each read the raw report dict and format it themselves. A JSON API, an HTML page or a Slack summary would each need yet another copy of the key lookups and the None handling.",
+      "why_it_matters": "Every change to an analysis result is a search-and-replace across modules with no type checker able to help, and inconsistencies show up only in front of users.",
+      "suggested_fix": "Define the results as dataclasses or pydantic models (RevenueSummary, DispatchComparison, GapDrivers, Report) returned by the tools and consumed by the renderers; serialize to JSON only at the LLM boundary.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 83,
+          "end_line": null,
+          "quote": "\"historical_cleared_total_revenue\": _round(hist_rev),",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 171,
+          "end_line": null,
+          "quote": "hist_rev = rev_summary.get(\"historical_cleared_total_revenue\")",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/ui/app.py",
+          "line": 173,
+          "end_line": null,
+          "quote": "hist_rev = rev.get(\"historical_cleared_total_revenue\")",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 357,
+          "end_line": null,
+          "quote": "\"total_gap_pct\": _round(gap_pct),",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 178,
+          "end_line": null,
+          "quote": "pdf_bytes = pdf_generator.generate_pdf(report)",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "report-view-model",
+      "notes": [],
+      "rationales": {
+        "maintainability": "Every change to an analysis result is a search-and-replace across modules with no type checker able to help, and inconsistencies show up only in front of users.",
+        "extensibility": "Output formats are a likely extension for a reporting tool, and today each one multiplies the formatting bugs (the CLI already crashes where the UI does not)."
+      },
+      "inline": true
+    },
+    {
+      "id": "F-023",
+      "lens": "extensibility",
+      "lenses": [
+        "approach",
+        "extensibility"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "A second battery, market or schema requires editing every analysis function",
+      "claim": "The baseline and benchmark combinations (`historical/cleared`, `perfect/cleared`) are written literally in five places in `analysis_tools.py`, the required columns are a module constant, and the battery id defaults to `BLYTHB1`. Comparing `expected` schedules, or a market that names scenarios differently, means editing each function.\n\nAlso raised by the Approach & architecture lens: The design principle says the validator checks column names dynamically with no hard-coded assumptions. The code hard-codes the required columns, the `historical/cleared` and `perfect/cleared` combinations in every analysis tool, and a default battery id of `BLYTHB1`.",
+      "why_it_matters": "The plan names generalisation as a design principle, but the code makes the first new dataset an edit-everywhere change.",
+      "suggested_fix": "Put the schema, the baseline and benchmark combination names, the thresholds and the battery id in one config object passed through the run context. Analysis functions take the baseline/benchmark frames as arguments instead of filtering by name.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 172,
+          "end_line": null,
+          "quote": "hist = df[(df[\"SCENARIO_NAME\"] == \"historical\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")].copy()",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 228,
+          "end_line": null,
+          "quote": "hist = df[(df[\"SCENARIO_NAME\"] == \"historical\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")]",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 119,
+          "end_line": null,
+          "quote": "hist_stats = combo_stats(\"historical\", \"cleared\")",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 140,
+          "end_line": null,
+          "quote": "battery_id = \"BLYTHB1\"",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent_plan.md",
+          "line": 226,
+          "end_line": null,
+          "quote": "schema validator checks column names dynamically; no hardcoded assumptions in prompts",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "hardcoded-schema",
+      "notes": [],
+      "rationales": {
+        "extensibility": "The plan names generalisation as a design principle, but the code makes the first new dataset an edit-everywhere change.",
+        "approach": "A second battery, market or column naming needs code changes in several places, and a wrong default id can reach a report unnoticed."
+      },
+      "inline": true
+    },
+    {
+      "id": "F-024",
+      "lens": "extensibility",
+      "lenses": [
+        "extensibility"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "Adding one analysis step means edits in about seven places across six files",
+      "claim": "For a new metric (for example a degradation-cost analysis) you must write the function, add its schema to `TOOL_DEFINITIONS`, add a branch to `execute_tool`, add it to the tool order in the Analysis prompt and its initial message, widen `find_gap_drivers` if it should influence the drivers, pull its result out of `_results` in the orchestrator, and add display code to the PDF, the Streamlit page and the CLI. Nothing tells you if you missed one.",
+      "why_it_matters": "This is the change the project will most often need, and its cost grows with every step added.",
+      "suggested_fix": "Combine the tool registry from the design-patterns finding with an ordered list of analysis steps defined once in code. Have the orchestrator run that list, and have the report render whichever sections are present in the results, so a new step is one function plus one entry.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 383,
+          "end_line": null,
+          "quote": "TOOL_DEFINITIONS = [",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 472,
+          "end_line": null,
+          "quote": "def execute_tool(name: str, inputs: dict) -> dict:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/agents/analysis.py",
+          "line": 22,
+          "end_line": null,
+          "quote": "You MUST call tools in this exact order:",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/orchestrator.py",
+          "line": 133,
+          "end_line": null,
+          "quote": "revenue_summary = analysis_tools._results.get(\"revenue_summary\", {})",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 329,
+          "end_line": null,
+          "quote": "story.append(Paragraph(\"Performance Gap — Root Cause Analysis\", s[\"section\"]))",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-025",
+      "lens": "design-patterns",
+      "lenses": [
+        "design-patterns"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.85,
+      "title": "Each tool is written three times by hand, and the copies have already drifted",
+      "claim": "Every tool exists as a Python function, a hand-written JSON schema in `TOOL_DEFINITIONS`, and a branch in an `if/elif` `execute_tool` dispatcher, in each of three modules. Nothing keeps them in sync, and they already disagree: the schema marks all four `find_gap_drivers` inputs as required while the function treats them as optional and silently prefers them over the cached results (the root of finding 'Tools prefer JSON typed by the model'). The dispatchers also index `inputs[...]` without validation, which is why a malformed tool call raises `KeyError`.",
+      "why_it_matters": "Every new or changed tool needs three coordinated edits, and a mismatch is not caught by anything until the model trips over it at run time.",
+      "suggested_fix": "Use one small registry: a `@tool` decorator that records the function and derives its input schema from the type hints (or a pydantic model per tool), validates inputs before calling, and dispatches by dictionary lookup. That removes the three `execute_tool` functions and makes schema/implementation drift impossible.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 383,
+          "end_line": null,
+          "quote": "TOOL_DEFINITIONS = [",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 466,
+          "end_line": null,
+          "quote": "\"required\": [\"revenue_summary\", \"high_price_analysis\", \"dispatch_comparison\", \"soc_analysis\"],",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 281,
+          "end_line": null,
+          "quote": "revenue_summary: dict | None = None,",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 280,
+          "end_line": null,
+          "quote": "elif name == \"validate_schema\":",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": "tool-definition-registry",
+      "notes": [],
+      "rationales": {},
+      "inline": true
+    },
+    {
+      "id": "F-026",
+      "lens": "maintainability",
+      "lenses": [
+        "maintainability"
+      ],
+      "layer": "universal",
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "The two hardest-to-change functions mix several responsibilities",
+      "claim": "`find_gap_drivers` (97 lines, cyclomatic complexity 26, the highest in the repo) extracts eleven values from four nested dicts, applies the driver decision rule, and writes the English evidence sentences, all in one function. `generate_pdf` is 275 lines that both reformat data and lay out every section. The decision rule, which is where the sign bug lives, cannot be tested without also generating prose.",
+      "why_it_matters": "These are the functions most likely to need changes (new drivers, new report sections), and their size is why bugs like the `abs()` sign error are easy to miss.",
+      "suggested_fix": "Split `find_gap_drivers` into a pure scoring function that returns numbers and a separate narration step; give `generate_pdf` one small function per section. Add tests for the scoring function first.",
+      "evidence": [
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 280,
+          "end_line": null,
+          "quote": "def find_gap_drivers(",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 329,
+          "end_line": null,
+          "quote": "primary_factor = \"suboptimal_dispatch_timing\"",
+          "redacted": false
+        },
+        {
+          "kind": "line",
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 125,
+          "end_line": null,
+          "quote": "def generate_pdf(report: dict) -> bytes:",
+          "redacted": false
+        }
+      ],
+      "convention_source": null,
+      "tradeoff": null,
+      "origin": "llm",
+      "dedupe_key": null,
+      "notes": [],
+      "rationales": {},
+      "inline": false
+    },
+    {
+      "id": "F-027",
       "lens": "reliability",
       "lenses": [
         "reliability"
@@ -1081,7 +1554,7 @@
       "inline": false
     },
     {
-      "id": "F-021",
+      "id": "F-028",
       "lens": "reliability",
       "lenses": [
         "reliability"
@@ -1136,7 +1609,7 @@
       "inline": false
     },
     {
-      "id": "F-022",
+      "id": "F-029",
       "lens": "governance",
       "lenses": [
         "governance"
@@ -1167,7 +1640,7 @@
       "inline": false
     },
     {
-      "id": "F-023",
+      "id": "F-030",
       "lens": "governance",
       "lenses": [
         "governance"
@@ -1214,7 +1687,7 @@
       "inline": false
     },
     {
-      "id": "F-024",
+      "id": "F-031",
       "lens": "accuracy",
       "lenses": [
         "accuracy"
@@ -1253,7 +1726,7 @@
       "inline": false
     },
     {
-      "id": "F-025",
+      "id": "F-032",
       "lens": "accuracy",
       "lenses": [
         "accuracy"
@@ -1300,7 +1773,7 @@
       "inline": false
     },
     {
-      "id": "F-026",
+      "id": "F-033",
       "lens": "accuracy",
       "lenses": [
         "accuracy"
@@ -1339,7 +1812,7 @@
       "inline": false
     },
     {
-      "id": "F-027",
+      "id": "F-034",
       "lens": "accuracy",
       "lenses": [
         "accuracy"
@@ -1378,7 +1851,7 @@
       "inline": false
     },
     {
-      "id": "F-028",
+      "id": "F-035",
       "lens": "objective",
       "lenses": [
         "objective"
@@ -1417,54 +1890,54 @@
       "inline": false
     },
     {
-      "id": "F-029",
-      "lens": "approach",
+      "id": "F-036",
+      "lens": "maintainability",
       "lenses": [
-        "approach"
+        "maintainability"
       ],
       "layer": "universal",
       "severity": "low",
-      "confidence": 0.7,
-      "title": "The plan promises generalisation, but columns, scenario names and the battery id are hard-coded",
-      "claim": "The design principle says the validator checks column names dynamically with no hard-coded assumptions. The code hard-codes the required columns, the `historical/cleared` and `perfect/cleared` combinations in every analysis tool, and a default battery id of `BLYTHB1`.",
-      "why_it_matters": "A second battery, market or column naming needs code changes in several places, and a wrong default id can reach a report unnoticed.",
-      "suggested_fix": "Move the schema and the benchmark/baseline combination names into one configuration object that the tools receive; make the battery id an explicit input.",
+      "confidence": 0.8,
+      "title": "The same filters and thresholds are restated instead of named once",
+      "claim": "The baseline filter expression is written out five times, the 'non-zero energy' epsilon is a named local in one function and a bare `1e-6` in another, and the high-price percentile is computed independently in two tools. These copies will drift (the two thresholds already can).",
+      "why_it_matters": "A change to any of these definitions must be found and repeated by hand.",
+      "suggested_fix": "Add helpers such as `baseline(df)` / `benchmark(df)` and module-level named constants (`ENERGY_EPS`, `HIGH_PRICE_QUANTILE`, `LOW_SOC_PCT`), or put them in the run config.",
       "evidence": [
         {
           "kind": "line",
-          "file": "battery_agent_plan.md",
-          "line": 226,
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 184,
           "end_line": null,
-          "quote": "schema validator checks column names dynamically; no hardcoded assumptions in prompts",
+          "quote": "eps = 1e-6  # threshold for \"non-zero\" energy",
           "redacted": false
         },
         {
           "kind": "line",
-          "file": "battery_agent/tools/data_tools.py",
-          "line": 12,
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 244,
           "end_line": null,
-          "quote": "REQUIRED_COLUMNS = {",
+          "quote": "perf_discharged = perf[perf[\"DISCHARGE_ENERGY\"] > 1e-6]",
           "redacted": false
         },
         {
           "kind": "line",
-          "file": "battery_agent/orchestrator.py",
-          "line": 140,
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 103,
           "end_line": null,
-          "quote": "battery_id = \"BLYTHB1\"",
+          "quote": "threshold = float(df[\"PRICE_ENERGY\"].quantile(0.75))",
           "redacted": false
         }
       ],
       "convention_source": null,
       "tradeoff": null,
       "origin": "llm",
-      "dedupe_key": null,
+      "dedupe_key": "duplicated-constants",
       "notes": [],
       "rationales": {},
       "inline": false
     },
     {
-      "id": "F-030",
+      "id": "F-037",
       "lens": "reliability",
       "lenses": [
         "reliability"
@@ -1495,7 +1968,7 @@
       "inline": false
     },
     {
-      "id": "F-031",
+      "id": "F-038",
       "lens": "reliability",
       "lenses": [
         "reliability"
@@ -1534,7 +2007,7 @@
       "inline": false
     },
     {
-      "id": "F-032",
+      "id": "F-039",
       "lens": "approach",
       "lenses": [
         "approach"
@@ -1583,7 +2056,7 @@
       "inline": false
     },
     {
-      "id": "F-033",
+      "id": "F-040",
       "lens": "reliability",
       "lenses": [
         "reliability"
@@ -1622,7 +2095,7 @@
       "inline": false
     },
     {
-      "id": "F-034",
+      "id": "F-041",
       "lens": "reliability",
       "lenses": [
         "reliability"
@@ -1871,6 +2344,293 @@
     ],
     "agentic_reason": "8 LLM-call/tool-loop signal(s) found"
   },
+  "structure": {
+    "summary": {
+      "python_functions": 46,
+      "python_modules": 14,
+      "hot_functions": 11,
+      "max_function_lines": 275,
+      "max_complexity": 26,
+      "import_cycles": 0
+    },
+    "hot_functions": [
+      {
+        "file": "battery_agent/tools/analysis_tools.py",
+        "line": 280,
+        "name": "find_gap_drivers",
+        "lines": 97,
+        "complexity": 26,
+        "params": 4,
+        "nesting": 2
+      },
+      {
+        "file": "battery_agent/report/pdf_generator.py",
+        "line": 125,
+        "name": "generate_pdf",
+        "lines": 275,
+        "complexity": 17,
+        "params": 1,
+        "nesting": 2
+      },
+      {
+        "file": "battery_agent/orchestrator.py",
+        "line": 36,
+        "name": "run_analysis",
+        "lines": 154,
+        "complexity": 17,
+        "params": 3,
+        "nesting": 2
+      },
+      {
+        "file": "battery_agent/main.py",
+        "line": 15,
+        "name": "main",
+        "lines": 152,
+        "complexity": 12,
+        "params": 0,
+        "nesting": 2
+      },
+      {
+        "file": "battery_agent/tools/analysis_tools.py",
+        "line": 222,
+        "name": "analyze_soc",
+        "lines": 56,
+        "complexity": 11,
+        "params": 0,
+        "nesting": 2
+      },
+      {
+        "file": "battery_agent/tools/rec_tools.py",
+        "line": 15,
+        "name": "generate_recommendations",
+        "lines": 66,
+        "complexity": 10,
+        "params": 4,
+        "nesting": 2
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "line": 27,
+        "name": "run_agent_loop",
+        "lines": 69,
+        "complexity": 9,
+        "params": 6,
+        "nesting": 4
+      },
+      {
+        "file": "battery_agent/tools/analysis_tools.py",
+        "line": 95,
+        "name": "identify_high_price_intervals",
+        "lines": 69,
+        "complexity": 9,
+        "params": 1,
+        "nesting": 3
+      },
+      {
+        "file": "battery_agent/tools/analysis_tools.py",
+        "line": 472,
+        "name": "execute_tool",
+        "lines": 19,
+        "complexity": 6,
+        "params": 2,
+        "nesting": 5
+      },
+      {
+        "file": "battery_agent/tools/data_tools.py",
+        "line": 276,
+        "name": "execute_tool",
+        "lines": 12,
+        "complexity": 5,
+        "params": 2,
+        "nesting": 4
+      },
+      {
+        "file": "battery_agent/report/pdf_generator.py",
+        "line": 34,
+        "name": "_styles",
+        "lines": 64,
+        "complexity": 1,
+        "params": 0,
+        "nesting": 0
+      }
+    ],
+    "modules": [
+      {
+        "file": "battery_agent/orchestrator.py",
+        "lines": 190,
+        "functions": 3,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/agents/analysis.py",
+          "battery_agent/agents/data_prep.py",
+          "battery_agent/agents/recommendations.py",
+          "battery_agent/report/pdf_generator.py",
+          "battery_agent/tools/analysis_tools.py",
+          "battery_agent/tools/data_tools.py",
+          "battery_agent/tools/rec_tools.py"
+        ],
+        "fan_in": [
+          "battery_agent/main.py",
+          "battery_agent/ui/app.py"
+        ]
+      },
+      {
+        "file": "battery_agent/tools/analysis_tools.py",
+        "lines": 491,
+        "functions": 11,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/tools/data_tools.py"
+        ],
+        "fan_in": [
+          "battery_agent/agents/analysis.py",
+          "battery_agent/agents/recommendations.py",
+          "battery_agent/orchestrator.py",
+          "battery_agent/tools/rec_tools.py"
+        ]
+      },
+      {
+        "file": "battery_agent/agents/recommendations.py",
+        "lines": 87,
+        "functions": 1,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/agents/base.py",
+          "battery_agent/tools/analysis_tools.py",
+          "battery_agent/tools/rec_tools.py"
+        ],
+        "fan_in": [
+          "battery_agent/orchestrator.py"
+        ]
+      },
+      {
+        "file": "battery_agent/agents/analysis.py",
+        "lines": 97,
+        "functions": 1,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/agents/base.py",
+          "battery_agent/tools/analysis_tools.py"
+        ],
+        "fan_in": [
+          "battery_agent/orchestrator.py"
+        ]
+      },
+      {
+        "file": "battery_agent/agents/base.py",
+        "lines": 96,
+        "functions": 3,
+        "classes": 0,
+        "fan_out": [],
+        "fan_in": [
+          "battery_agent/agents/analysis.py",
+          "battery_agent/agents/data_prep.py",
+          "battery_agent/agents/recommendations.py"
+        ]
+      },
+      {
+        "file": "battery_agent/agents/data_prep.py",
+        "lines": 76,
+        "functions": 1,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/agents/base.py",
+          "battery_agent/tools/data_tools.py"
+        ],
+        "fan_in": [
+          "battery_agent/orchestrator.py"
+        ]
+      },
+      {
+        "file": "battery_agent/tools/data_tools.py",
+        "lines": 288,
+        "functions": 6,
+        "classes": 0,
+        "fan_out": [],
+        "fan_in": [
+          "battery_agent/agents/data_prep.py",
+          "battery_agent/orchestrator.py",
+          "battery_agent/tools/analysis_tools.py"
+        ]
+      },
+      {
+        "file": "battery_agent/tools/rec_tools.py",
+        "lines": 153,
+        "functions": 2,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/tools/analysis_tools.py"
+        ],
+        "fan_in": [
+          "battery_agent/agents/recommendations.py",
+          "battery_agent/orchestrator.py"
+        ]
+      },
+      {
+        "file": "battery_agent/main.py",
+        "lines": 171,
+        "functions": 11,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/orchestrator.py"
+        ],
+        "fan_in": []
+      },
+      {
+        "file": "battery_agent/report/pdf_generator.py",
+        "lines": 400,
+        "functions": 6,
+        "classes": 0,
+        "fan_out": [],
+        "fan_in": [
+          "battery_agent/orchestrator.py"
+        ]
+      },
+      {
+        "file": "battery_agent/ui/app.py",
+        "lines": 302,
+        "functions": 1,
+        "classes": 0,
+        "fan_out": [
+          "battery_agent/orchestrator.py"
+        ],
+        "fan_in": []
+      },
+      {
+        "file": "battery_agent/agents/__init__.py",
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "fan_out": [],
+        "fan_in": []
+      },
+      {
+        "file": "battery_agent/report/__init__.py",
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "fan_out": [],
+        "fan_in": []
+      },
+      {
+        "file": "battery_agent/tools/__init__.py",
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "fan_out": [],
+        "fan_in": []
+      }
+    ],
+    "big_classes": [],
+    "cycles": [],
+    "thresholds": {
+      "long_function": 60,
+      "complex_function": 10,
+      "many_params": 5,
+      "deep_nesting": 4,
+      "big_class": 15
+    }
+  },
   "stack": {
     "languages": {
       "json": 15,
@@ -1913,11 +2673,11 @@
   },
   "run": {
     "tool_version": "0.1.0",
-    "lens_version": "1",
+    "lens_version": "2",
     "model": "claude-sonnet-5-5",
     "runner": "replay",
-    "max_inline": 12,
+    "max_inline": 16,
     "min_confidence": 0.5,
-    "generated_at": "2026-10-31T23:24:15+00:00"
+    "generated_at": "2026-11-02T06:31:15+00:00"
   }
 }

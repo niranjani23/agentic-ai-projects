@@ -14,6 +14,7 @@ from ..models import ConventionProfile, Finding, ReviewOptions
 from ..scout.redact import is_sensitive_path, redact_secrets
 from ..scout.snapshot import Snapshot, is_vendored_or_generated
 from ..scout.stack import StackInfo
+from ..scout.structure import compute_structure, render_structure
 from ..scout.topology import Topology
 from .catalog import LensSpec
 
@@ -95,6 +96,8 @@ def render_context(ctx: LensContext) -> tuple[str, list[str]]:
         f"entry points: {', '.join(stack.entrypoints) or 'none detected'}\nserved by: {', '.join(stack.web_serving) or 'n/a'}\n"
         f"tests present: {stack.has_tests}  CI present: {stack.has_ci}\n</stack>"
     )
+    if snap.code_paths("python"):
+        header.append("<structure note=\"deterministic metrics; leads to confirm, not findings\">\n" + render_structure(compute_structure(snap)) + "\n</structure>")
     header.append(f"<topology>\nRAG: {'applicable' if topo.rag_applicable else 'NOT applicable'} - {topo.rag_reason}\nLLM pipeline: {topo.agentic_reason}\n</topology>")
 
     if ctx.static_findings:

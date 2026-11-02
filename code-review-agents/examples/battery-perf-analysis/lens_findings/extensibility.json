@@ -1,0 +1,98 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "The three most likely next changes are a new analysis step, a second battery or market, and a new output format. Today each touches many files, because the step list, the scenario names and the report shape are spelled out by hand in several places. No import cycles; the orchestrator is the only highly coupled module (imports 7 internal modules), which is expected for an orchestrator.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "Adding one analysis step means edits in about seven places across six files",
+      "claim": "For a new metric (for example a degradation-cost analysis) you must write the function, add its schema to `TOOL_DEFINITIONS`, add a branch to `execute_tool`, add it to the tool order in the Analysis prompt and its initial message, widen `find_gap_drivers` if it should influence the drivers, pull its result out of `_results` in the orchestrator, and add display code to the PDF, the Streamlit page and the CLI. Nothing tells you if you missed one.",
+      "why_it_matters": "This is the change the project will most often need, and its cost grows with every step added.",
+      "suggested_fix": "Combine the tool registry from the design-patterns finding with an ordered list of analysis steps defined once in code. Have the orchestrator run that list, and have the report render whichever sections are present in the results, so a new step is one function plus one entry.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 383,
+          "quote": "TOOL_DEFINITIONS = ["
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 472,
+          "quote": "def execute_tool(name: str, inputs: dict) -> dict:"
+        },
+        {
+          "file": "battery_agent/agents/analysis.py",
+          "line": 22,
+          "quote": "You MUST call tools in this exact order:"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 133,
+          "quote": "revenue_summary = analysis_tools._results.get(\"revenue_summary\", {})"
+        },
+        {
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 329,
+          "quote": "story.append(Paragraph(\"Performance Gap — Root Cause Analysis\", s[\"section\"]))"
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.75,
+      "dedupe_key": "hardcoded-schema",
+      "title": "A second battery, market or schema requires editing every analysis function",
+      "claim": "The baseline and benchmark combinations (`historical/cleared`, `perfect/cleared`) are written literally in five places in `analysis_tools.py`, the required columns are a module constant, and the battery id defaults to `BLYTHB1`. Comparing `expected` schedules, or a market that names scenarios differently, means editing each function.",
+      "why_it_matters": "The plan names generalisation as a design principle, but the code makes the first new dataset an edit-everywhere change.",
+      "suggested_fix": "Put the schema, the baseline and benchmark combination names, the thresholds and the battery id in one config object passed through the run context. Analysis functions take the baseline/benchmark frames as arguments instead of filtering by name.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 172,
+          "quote": "hist = df[(df[\"SCENARIO_NAME\"] == \"historical\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")].copy()"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 228,
+          "quote": "hist = df[(df[\"SCENARIO_NAME\"] == \"historical\") & (df[\"SCHEDULE_TYPE\"] == \"cleared\")]"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 119,
+          "quote": "hist_stats = combo_stats(\"historical\", \"cleared\")"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 140,
+          "quote": "battery_id = \"BLYTHB1\""
+        }
+      ]
+    },
+    {
+      "severity": "low",
+      "confidence": 0.75,
+      "dedupe_key": "report-view-model",
+      "title": "A new output format would be a fourth copy of the report logic",
+      "claim": "The orchestrator calls the PDF generator directly, and the PDF, the Streamlit page and the CLI each read the raw report dict and format it themselves. A JSON API, an HTML page or a Slack summary would each need yet another copy of the key lookups and the None handling.",
+      "why_it_matters": "Output formats are a likely extension for a reporting tool, and today each one multiplies the formatting bugs (the CLI already crashes where the UI does not).",
+      "suggested_fix": "Build one typed report model once, and make each output a small adapter that renders it (PDF, Streamlit, CLI, JSON). The orchestrator returns the model; the caller picks the renderer.",
+      "evidence": [
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 178,
+          "quote": "pdf_bytes = pdf_generator.generate_pdf(report)"
+        },
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 173,
+          "quote": "hist_rev = rev.get(\"historical_cleared_total_revenue\")"
+        },
+        {
+          "file": "battery_agent/main.py",
+          "line": 125,
+          "quote": "historical_cleared_total_revenue"
+        }
+      ]
+    }
+  ]
+}

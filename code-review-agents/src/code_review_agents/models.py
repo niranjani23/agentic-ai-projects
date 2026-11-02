@@ -201,6 +201,7 @@ class Review(BaseModel):
     dropped: list[DroppedFinding] = Field(default_factory=list)
     profile: ConventionProfile = Field(default_factory=ConventionProfile)
     topology: dict = Field(default_factory=dict)
+    structure: dict = Field(default_factory=dict)  # deterministic structure metrics (scout/structure.py)
     stack: dict = Field(default_factory=dict)
     run: dict = Field(default_factory=dict)  # models, versions, timestamps (excluded from content hash)
 
@@ -215,6 +216,7 @@ class Review(BaseModel):
             "findings": [f.model_dump(mode="json") for f in self.findings],
             "conflicts": [c.model_dump(mode="json") for c in self.conflicts],
             "rules": [r.model_dump(mode="json") for r in self.profile.rules],
+            "structure": self.structure,
         }
         blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(blob.encode()).hexdigest()[:16]

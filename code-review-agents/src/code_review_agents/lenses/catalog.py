@@ -3,7 +3,10 @@
 A *lens* is a specialist reviewer with one concern. Lenses are grouped into packs, and a
 pack only runs when the scout found evidence that it applies:
 
-  general  - always
+  general  - always; grouped into three dimensions:
+               product      (objective, approach)
+               engineering  (design patterns, extensibility, robustness, maintainability, testing)
+               operations   (scalability, accuracy, governance)
   agentic  - the repo calls an LLM / runs a tool loop
   rag      - the repo contains a retrieval pipeline (embed + store/retrieve)
 
@@ -13,11 +16,11 @@ RAG system; the review prints the evidence for that decision.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ..scout.topology import Topology
 
-LENS_VERSION = "1"
+LENS_VERSION = "2"
 
 
 @dataclass(frozen=True)
@@ -28,9 +31,11 @@ class LensSpec:
     focus: str
     file_hints: tuple[str, ...] = field(default_factory=tuple)  # regexes matched on path or content
     doc_heavy: bool = False  # wants README/docs in context (objective, approach)
+    dimension: str = ""  # product | engineering | operations | agentic | rag (grouping in the review)
 
 
 GENERAL: list[LensSpec] = [
+    # ---- product: is this the right thing, built the right way? ------------------------------
     LensSpec(
         "objective", "Objective & fit", "general",
         """\
@@ -43,20 +48,99 @@ THEN check, with evidence:
 - End-to-end honoring of inputs: every CLI flag, UI field and config option a user can set. Does it reach the code that should act on it?
 - Scope fit: is anything essential to the objective missing, and is anything built that nothing uses?
 - Does the output answer the question the user would actually be asking?""",
-        doc_heavy=True,
+        doc_heavy=True, dimension="product",
     ),
     LensSpec(
         "approach", "Approach & architecture", "general",
         """\
-Judge whether the design is proportionate to the problem.
-- Where does complexity (layers, agents, frameworks) not buy anything? Where is something fixed and deterministic being run through a
+Judge the system-level design: is it proportionate to the problem?
+- Where does complexity (layers, agents, services, frameworks) not buy anything? Where is fixed, deterministic work run through a
   non-deterministic or heavyweight mechanism?
-- Responsibilities and coupling: hidden coupling through globals, side channels or implicit call ordering.
-- Interfaces and extensibility: what must change to add a second data source / model / tenant?
+- Component boundaries and data flow: is each component's responsibility clear, and does data flow through explicit interfaces or
+  through side channels (globals, files, implicit call order)?
+- Drift between the documented design and the implemented one.
 - Offer alternatives only with their tradeoffs, and respect constraints stated by the author (an assignment brief, a deadline).
-- Drift between the documented design and the implemented one.""",
-        doc_heavy=True,
+Code-level patterns, extensibility and robustness have their own lenses; stay at the architecture level.""",
+        doc_heavy=True, dimension="product",
     ),
+    # ---- engineering: will this codebase survive change? -----------------------------------
+    LensSpec(
+        "design-patterns", "Design patterns & abstractions", "general",
+        """\
+Review the code-level design: the abstractions, the patterns in use, and the anti-patterns.
+- Patterns in use: name them (registry, strategy, adapter, factory, pipeline, repository, dependency injection, state machine...)
+  and judge whether each is applied consistently and earns its keep. A pattern applied in half the places is often worse than none.
+- Missing abstractions that cause concrete pain: if/elif chains dispatching on a name or type that grow with every new case,
+  the same data passed around as loose dicts with string keys (primitive obsession), copy-pasted variants of one algorithm.
+- Anti-patterns: god modules/functions, hidden global state, temporal coupling (functions that only work if called in a certain order),
+  feature envy, leaky abstractions (callers must know an implementation detail), boolean flag parameters that switch behaviour.
+- SOLID where it bites: a module with several reasons to change; callers depending on concretions where a seam is needed.
+- Use the <structure> block (long/complex functions, coupling) as leads, then confirm in the code.
+RULES: recommend a pattern only when it removes a concrete, demonstrated cost in THIS code; name the cost. Never recommend a pattern
+for its own sake, and say so when the simple version is the right call. Cite the code that would change.""",
+        file_hints=(r"^class |\bclass \w", r"\bif .* == ['\"]|elif .* == ['\"]", r"_state|_results|global ", r"def \w+\([^)]*,[^)]*,[^)]*,[^)]*,", r"\.get\(['\"]"),
+        dimension="engineering",
+    ),
+    LensSpec(
+        "extensibility", "Extensibility & modularity", "general",
+        """\
+Measure the cost of the NEXT change. Identify the two or three most likely extensions for this codebase (a second data source, a new
+model or provider, a new output format, a new tenant/customer, a new rule or step) and for each, trace what would have to change.
+- Seams: where are the extension points (interfaces, registries, config, plugins)? Where must existing code be edited instead
+  (open/closed violations)? Count the files touched for each likely extension.
+- Configuration vs code: values that vary per deployment, customer or dataset that are hard-coded (names, thresholds, schemas, ids).
+- Modularity: module cohesion; dependency direction (do low-level modules import high-level ones?); import cycles; fan-in/fan-out
+  from the <structure> block; can a module be reused or tested without dragging in the rest?
+- Public surfaces: function signatures and data contracts other code depends on; are they explicit and typed, or implicit dict shapes?
+Report each finding as: the likely extension, what it costs today (files/functions that must change), and the smallest change that
+would make it cheap. Do not propose speculative generality for extensions nothing points to.""",
+        file_hints=(r"import ", r"REQUIRED_|DEFAULT_|[A-Z_]{4,} = ", r"if .* == ['\"]", r"def execute_tool|dispatch|registry|TOOL", r"config|settings|environ"),
+        dimension="engineering",
+    ),
+    LensSpec(
+        "robustness", "Robustness & error handling", "general",
+        """\
+How does the code behave when things go wrong? For each finding give the trigger (bad input, failing dependency, partial state) and
+what the user sees.
+- Input validation at trust boundaries: is external input (files, user text, API responses, model output) validated where it enters,
+  or trusted deep inside? Validate-then-coerce ordering.
+- Error strategy: is there ONE consistent strategy (exceptions vs returned errors)? Broad `except Exception` that hides bugs, errors
+  converted to success-shaped values, errors swallowed or only logged, error messages the caller cannot act on.
+- Failure isolation: does one failing step take down the whole run, or degrade gracefully? Partial results reported as complete.
+- Resource lifecycle: files, temp files, connections and clients closed/cleaned up on every path (try/finally, context managers).
+- External calls: timeouts, retries with backoff, idempotency of retried operations.
+- Invariants: assumptions the code relies on (uniqueness, ranges, units, non-empty) that are never checked.""",
+        file_hints=(r"except", r"try:", r"raise ", r"status.*error|\"error\"", r"tempfile|open\(", r"timeout|retry", r"\.get\("),
+        dimension="engineering",
+    ),
+    LensSpec(
+        "maintainability", "Maintainability & readability", "general",
+        """\
+Would a new engineer understand and safely change this code in their first week?
+- Complexity hot spots: the longest / most branched functions in the <structure> block. Are they long because the problem is, or
+  because several responsibilities are mixed? Suggest a concrete split only when the boundaries are visible.
+- Duplication: the same logic, threshold or filter written in several places (it will diverge).
+- Naming and intent: names that mislead (a field named for one quantity that computes another), magic numbers without a name or rationale.
+- Types and contracts: are data shapes explicit (dataclasses, TypedDict, pydantic) or implicit nested dicts with string keys?
+- Dead code, stale comments, docs that disagree with code, inconsistent conventions WITHIN the codebase.
+Team-specific style is handled by the convention layer: only flag style as layer="team" with a convention_source from the profile.
+Prioritise what causes bugs or slows changes; leave pure taste out.""",
+        file_hints=(r"def ", r"\b\d+\.\d+\b|\b0\.\d+\b", r"\.get\(['\"]\w+['\"]", r"# TODO|# FIXME|# XXX", r"dict\[|: dict"),
+        dimension="engineering",
+    ),
+    LensSpec(
+        "reliability", "Testing & observability", "general",
+        """\
+- Tests: what is untested that matters most, and what in the design makes the code hard to test (globals, hidden I/O, time,
+  network, a model in the loop)? Propose the cheapest high-value tests: pure functions with fixtures first.
+- Testability seams: can dependencies (clients, file system, clock) be substituted? Is the deterministic core separable from I/O?
+- Observability: could you debug a bad result after the fact? Run IDs, structured logs, saved inputs and outputs, timings.
+- Reproducibility: pinned dependencies, deterministic settings, documented setup.
+Deterministic findings (no tests, no CI, README drift) are already listed; do not repeat them.""",
+        file_hints=(r"logging|logger|print\(", r"def test_|pytest|unittest", r"requirements|pyproject", r"datetime\.now|time\.time|random"),
+        dimension="engineering",
+    ),
+    # ---- operations: does it hold up in use? -------------------------------------------------
     LensSpec(
         "scalability", "Scalability & cost", "general",
         """\
@@ -64,9 +148,10 @@ Find what breaks first as data, users or runs grow, and say at what scale.
 - Data volume: whole-file loads, quadratic joins/merges, repeated full passes, unbounded caches.
 - Concurrency and isolation: shared mutable state, thread-safety, per-user and per-run isolation, temp-file lifecycles.
 - Cost and latency: calls to external services per run, context growth across turns, caching, batching, safe parallelism.
-- Operational limits: upload/file size caps, timeouts, retries and backoff, rate limits, idempotency.
+- Operational limits: upload/file size caps, rate limits.
 For each, name the failure point and an order of magnitude, not just "may not scale".""",
         file_hints=(r"\bthread", r"\basync", r"read_csv|read_json|open\(", r"\.merge\(|\.join\(", r"cache", r"tempfile"),
+        dimension="operations",
     ),
     LensSpec(
         "accuracy", "Accuracy & correctness", "general",
@@ -74,11 +159,11 @@ For each, name the failure point and an order of magnitude, not just "may not sc
 Hunt for wrong results, with a concrete failing input and expected-vs-actual for each.
 - Core logic: formulas, units, sign errors, off-by-one, aggregation scope, joins on non-unique keys, time zones, NaN handling.
 - Thresholds: hard-coded magic numbers, and the same threshold computed in two places with different inputs.
-- Validation vs coercion order: is data validated before it is silently coerced or dropped? Do bad values disappear without a warning?
 - Labels vs computation: does a field called "missed revenue" actually compute that quantity?
-- Failure paths: crashes on edge-case inputs (None, empty, missing key), formatting of None, broad excepts that return partial output as success.
+- Crashes on edge-case inputs (None, empty, missing key), formatting of None.
 Do not speculate: if you cannot show the failing input, lower the confidence.""",
         file_hints=(r"\.sum\(|\.mean\(|\.quantile\(", r"/ ", r"round\(", r"threshold", r"astype|to_numeric|to_datetime", r"f\"[^\"]*:[,.]\d"),
+        dimension="operations",
     ),
     LensSpec(
         "governance", "Security, privacy & governance", "general",
@@ -87,19 +172,10 @@ Do not speculate: if you cannot show the failing input, lower the confidence."""
 - Data handling: PII, retention (temp files, logs), and exactly what leaves the machine toward third parties such as an LLM provider.
 - Trust boundaries: untrusted input reaching prompts, shells, SQL, file paths or markup; model output trusted without validation.
 - AuthN/AuthZ and multi-tenant isolation in anything served to more than one user.
-- Claims about privacy or data handling in the docs versus what the code does (e.g. "the model never sees raw data").
+- Claims about privacy or data handling in the docs versus what the code does.
 Deterministic secret and hygiene findings are already listed; add what a scanner cannot see.""",
         file_hints=(r"tempfile|NamedTemporaryFile", r"subprocess|os\.system|eval\(|exec\(", r"open\(", r"requests\.|httpx|urllib", r"unsafe_allow_html", r"preview|head\("),
-    ),
-    LensSpec(
-        "reliability", "Reliability, testing & observability", "general",
-        """\
-- Tests: what is untested that matters most, and what makes the code hard to test?
-- Failure handling: exceptions that kill an entire run, missing timeouts/retries, partial results reported as success.
-- Observability: could you debug a bad result after the fact? Run IDs, structured logs, saved inputs and outputs.
-- Reproducibility: pinned dependencies, deterministic settings, documented setup.
-Deterministic findings (no tests, no CI, README drift) are already listed; do not repeat them.""",
-        file_hints=(r"except", r"logging|logger|print\(", r"timeout", r"retry|backoff"),
+        dimension="operations",
     ),
 ]
 
@@ -184,7 +260,17 @@ Corpus governance is where production RAG usually fails, so check it first.
     ),
 ]
 
-ALL_LENSES: dict[str, LensSpec] = {s.name: s for s in [*GENERAL, *AGENTIC, *RAG]}
+ALL_LENSES: dict[str, LensSpec] = {
+    s.name: (s if s.dimension else replace(s, dimension=s.pack)) for s in [*GENERAL, *AGENTIC, *RAG]
+}
+
+DIMENSIONS: dict[str, str] = {
+    "product": "Product: is this the right thing, built the right way?",
+    "engineering": "Engineering quality: will this codebase survive change?",
+    "operations": "Operations: does it hold up in use?",
+    "agentic": "LLM / agent design (runs when the code calls an LLM)",
+    "rag": "RAG (runs only when a retrieval pipeline is detected)",
+}
 
 
 def plan_lenses(topo: Topology, only: list[str] | None = None) -> tuple[list[LensSpec], dict[str, dict]]:

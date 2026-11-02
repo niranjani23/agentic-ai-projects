@@ -56,7 +56,8 @@
           "line": 140,
           "quote": "battery_id = \"BLYTHB1\""
         }
-      ]
+      ],
+      "dedupe_key": "hardcoded-schema"
     },
     {
       "severity": "medium",

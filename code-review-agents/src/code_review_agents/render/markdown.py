@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..lenses.catalog import ALL_LENSES
+from ..lenses.catalog import ALL_LENSES, DIMENSIONS
 from ..models import SEVERITY_ORDER, ConventionRule, Finding, Review
 
 LENS_ORDER = list(ALL_LENSES)
@@ -32,7 +32,7 @@ def _title(lens: str) -> str:
 
 def _card(f: Finding) -> str:
     lens_line = f"{_title(f.lens)}" + (f" (also: {', '.join(_title(x) for x in f.lenses if x != f.lens)})" if len(f.lenses) > 1 else "")
-    out = [f"#### {f.id} · {SEV_LABEL[f.severity]} · {f.title}", ""]
+    out = [f"##### {f.id} · {SEV_LABEL[f.severity]} · {f.title}", ""]
     out.append(f"_{lens_line} · confidence {f.confidence:.2f} · {'deterministic check' if f.origin == 'static' else 'LLM lens'} · {f.layer} layer_")
     out.append("")
     for ev in f.evidence[:5]:
@@ -98,7 +98,7 @@ def render_markdown(review: Review) -> str:
             o.append(f"| {f.id} | {SEV_LABEL[f.severity]} | {_cell(_title(f.lens))} | {_cell(f.title)} | {_cell(_where(f))} |")
         o.append("")
 
-    o += ["### Scorecard by lens", "", "| Lens | Status | Findings | Critical | High | Medium | Low / nit |", "|---|---|---|---|---|---|---|"]
+    o += ["### Scorecard by lens", "", "| Dimension | Lens | Status | Findings | Critical | High | Medium | Low / nit |", "|---|---|---|---|---|---|---|---|"]
     for lens in LENS_ORDER:
         st = review.lens_status.get(lens)
         if not st:
@@ -106,13 +106,33 @@ def render_markdown(review: Review) -> str:
         mine = [f for f in review.findings if f.lens == lens]
         c = _counts(mine)
         status = st.get("status", "?")
+        dim = {"rag": "RAG", "agentic": "LLM / agent"}.get(ALL_LENSES[lens].dimension, ALL_LENSES[lens].dimension.capitalize()) if lens in ALL_LENSES else ""
         if status == "skipped":
-            o.append(f"| {_cell(_title(lens))} | skipped | - | - | - | - | - |")
+            o.append(f"| {dim} | {_cell(_title(lens))} | skipped | - | - | - | - | - |")
         elif status in {"not_run", "error"}:
-            o.append(f"| {_cell(_title(lens))} | {status} | - | - | - | - | - |")
+            o.append(f"| {dim} | {_cell(_title(lens))} | {status} | - | - | - | - | - |")
         else:
-            o.append(f"| {_cell(_title(lens))} | ran | {len(mine)} | {c['critical']} | {c['high']} | {c['medium']} | {c['low'] + c['nit']} |")
+            o.append(f"| {dim} | {_cell(_title(lens))} | ran | {len(mine)} | {c['critical']} | {c['high']} | {c['medium']} | {c['low'] + c['nit']} |")
     o.append("")
+
+    st_ = review.structure
+    if st_:
+        sm = st_["summary"]
+        th = st_["thresholds"]
+        o += ["### Structure at a glance", "",
+              f"Measured, not judged: {sm['python_functions']} functions in {sm['python_modules']} Python modules; "
+              f"{sm['hot_functions']} exceed a threshold (lines >= {th['long_function']}, complexity >= {th['complex_function']}, "
+              f"parameters >= {th['many_params']}, nesting >= {th['deep_nesting']}); import cycles: {sm['import_cycles']}. "
+              "The design lenses use these as leads.", ""]
+        hot = st_["hot_functions"][:6]
+        if hot:
+            o += ["| Function | Where | Lines | Complexity | Params | Nesting |", "|---|---|---|---|---|---|"]
+            o += [f"| `{h['name']}` | {h['file']}:{h['line']} | {h['lines']} | {h['complexity']} | {h['params']} | {h['nesting']} |" for h in hot]
+            o.append("")
+        coupled = [m for m in st_["modules"] if m["fan_in"] or m["fan_out"]][:4]
+        if coupled:
+            o.append("Most coupled modules (imported by / imports): " + "; ".join(f"`{m['file']}` {len(m['fan_in'])} / {len(m['fan_out'])}" for m in coupled) + ".")
+            o.append("")
 
     if review.conflicts:
         o += ["### Tradeoffs needing a human decision", "", "These are genuine tensions between lenses. The reviewer did not pick a side.", ""]
@@ -124,11 +144,16 @@ def render_markdown(review: Review) -> str:
 
     # ---- 2. Detailed comments ----------------------------------------------
     o += ["## 2. Detailed comments", ""]
+    current_dim = None
     for lens in LENS_ORDER:
         st = review.lens_status.get(lens)
         if not st or st.get("status") == "skipped":
             continue
-        o += [f"### {_title(lens)}", ""]
+        dim = ALL_LENSES[lens].dimension if lens in ALL_LENSES else ""
+        if dim != current_dim:
+            current_dim = dim
+            o += [f"### {DIMENSIONS.get(dim, dim)}", ""]
+        o += [f"#### {_title(lens)}", ""]
         if st.get("status") in {"not_run", "error"}:
             o += [f"_This lens did not produce findings ({st.get('status')}: {st.get('detail', '')})._", ""]
             continue

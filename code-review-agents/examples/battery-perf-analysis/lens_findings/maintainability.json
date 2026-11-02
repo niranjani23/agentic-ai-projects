@@ -1,0 +1,88 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "Most functions are short and clearly named, and the modules map cleanly onto the README's architecture. Maintenance cost concentrates in two oversized functions and in result data passed around as untyped nested dicts whose key strings are repeated across producers and renderers.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.85,
+      "dedupe_key": "report-view-model",
+      "title": "Results travel as untyped nested dicts whose keys are retyped in four places",
+      "claim": "Keys such as `historical_cleared_total_revenue` and `gap_pct` are written in the tool that produces them and again in the PDF generator, the Streamlit page and the CLI. The same number even has two names (`gap_pct` in the revenue summary, `total_gap_pct` in the gap drivers). A renamed or misspelled key does not fail; it silently becomes `None` or 'N/A' in one output.",
+      "why_it_matters": "Every change to an analysis result is a search-and-replace across modules with no type checker able to help, and inconsistencies show up only in front of users.",
+      "suggested_fix": "Define the results as dataclasses or pydantic models (RevenueSummary, DispatchComparison, GapDrivers, Report) returned by the tools and consumed by the renderers; serialize to JSON only at the LLM boundary.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 83,
+          "quote": "\"historical_cleared_total_revenue\": _round(hist_rev),"
+        },
+        {
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 171,
+          "quote": "hist_rev = rev_summary.get(\"historical_cleared_total_revenue\")"
+        },
+        {
+          "file": "battery_agent/ui/app.py",
+          "line": 173,
+          "quote": "hist_rev = rev.get(\"historical_cleared_total_revenue\")"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 357,
+          "quote": "\"total_gap_pct\": _round(gap_pct),"
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.8,
+      "title": "The two hardest-to-change functions mix several responsibilities",
+      "claim": "`find_gap_drivers` (97 lines, cyclomatic complexity 26, the highest in the repo) extracts eleven values from four nested dicts, applies the driver decision rule, and writes the English evidence sentences, all in one function. `generate_pdf` is 275 lines that both reformat data and lay out every section. The decision rule, which is where the sign bug lives, cannot be tested without also generating prose.",
+      "why_it_matters": "These are the functions most likely to need changes (new drivers, new report sections), and their size is why bugs like the `abs()` sign error are easy to miss.",
+      "suggested_fix": "Split `find_gap_drivers` into a pure scoring function that returns numbers and a separate narration step; give `generate_pdf` one small function per section. Add tests for the scoring function first.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 280,
+          "quote": "def find_gap_drivers("
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 329,
+          "quote": "primary_factor = \"suboptimal_dispatch_timing\""
+        },
+        {
+          "file": "battery_agent/report/pdf_generator.py",
+          "line": 125,
+          "quote": "def generate_pdf(report: dict) -> bytes:"
+        }
+      ]
+    },
+    {
+      "severity": "low",
+      "confidence": 0.8,
+      "dedupe_key": "duplicated-constants",
+      "title": "The same filters and thresholds are restated instead of named once",
+      "claim": "The baseline filter expression is written out five times, the 'non-zero energy' epsilon is a named local in one function and a bare `1e-6` in another, and the high-price percentile is computed independently in two tools. These copies will drift (the two thresholds already can).",
+      "why_it_matters": "A change to any of these definitions must be found and repeated by hand.",
+      "suggested_fix": "Add helpers such as `baseline(df)` / `benchmark(df)` and module-level named constants (`ENERGY_EPS`, `HIGH_PRICE_QUANTILE`, `LOW_SOC_PCT`), or put them in the run config.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 184,
+          "quote": "eps = 1e-6  # threshold for \"non-zero\" energy"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 244,
+          "quote": "perf_discharged = perf[perf[\"DISCHARGE_ENERGY\"] > 1e-6]"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 103,
+          "quote": "threshold = float(df[\"PRICE_ENERGY\"].quantile(0.75))"
+        }
+      ]
+    }
+  ]
+}

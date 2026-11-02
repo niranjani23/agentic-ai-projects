@@ -1,0 +1,63 @@
+{
+  "model": "recorded (authored by Claude from reading the code; not an API run)",
+  "summary": "The good parts are worth keeping: one shared tool_use loop (`run_agent_loop`) instead of three copies, thin agent modules that only hold a prompt and a call, and tools that return JSON rather than prose. No heavier pattern is needed for three agents. The weaknesses are at the seams: each tool is defined three times by hand, and the parts talk through module-level globals instead of explicit inputs.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": 0.85,
+      "dedupe_key": "tool-definition-registry",
+      "title": "Each tool is written three times by hand, and the copies have already drifted",
+      "claim": "Every tool exists as a Python function, a hand-written JSON schema in `TOOL_DEFINITIONS`, and a branch in an `if/elif` `execute_tool` dispatcher, in each of three modules. Nothing keeps them in sync, and they already disagree: the schema marks all four `find_gap_drivers` inputs as required while the function treats them as optional and silently prefers them over the cached results (the root of finding 'Tools prefer JSON typed by the model'). The dispatchers also index `inputs[...]` without validation, which is why a malformed tool call raises `KeyError`.",
+      "why_it_matters": "Every new or changed tool needs three coordinated edits, and a mismatch is not caught by anything until the model trips over it at run time.",
+      "suggested_fix": "Use one small registry: a `@tool` decorator that records the function and derives its input schema from the type hints (or a pydantic model per tool), validates inputs before calling, and dispatches by dictionary lookup. That removes the three `execute_tool` functions and makes schema/implementation drift impossible.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 383,
+          "quote": "TOOL_DEFINITIONS = ["
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 466,
+          "quote": "\"required\": [\"revenue_summary\", \"high_price_analysis\", \"dispatch_comparison\", \"soc_analysis\"],"
+        },
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 281,
+          "quote": "revenue_summary: dict | None = None,"
+        },
+        {
+          "file": "battery_agent/tools/data_tools.py",
+          "line": 280,
+          "quote": "elif name == \"validate_schema\":"
+        }
+      ]
+    },
+    {
+      "severity": "medium",
+      "confidence": 0.85,
+      "dedupe_key": "shared-module-state",
+      "title": "Components communicate through module globals rather than explicit inputs",
+      "claim": "The analysis tools reach into `data_tools._state` for the DataFrame, the orchestrator and the recommendation tool read private `_results` dicts of another module, and each agent clears another module's cache before running. These are side channels: no function signature shows what a step needs or produces, and the call order is the only thing making them correct (temporal coupling).",
+      "why_it_matters": "Beyond the concurrency risk, this is what makes the tools hard to test in isolation and hard to reuse: you cannot call `compare_dispatch(df)` on a DataFrame; you must first run the loading tools to populate a global.",
+      "suggested_fix": "Introduce a `RunContext` dataclass (clean DataFrame, thresholds, results) created by the orchestrator and passed to every tool (dependency injection). Tools become pure functions of their inputs, and the orchestrator reads results from the context instead of from other modules' privates.",
+      "evidence": [
+        {
+          "file": "battery_agent/tools/analysis_tools.py",
+          "line": 19,
+          "quote": "return data_tools._state.get(\"clean_df\")"
+        },
+        {
+          "file": "battery_agent/orchestrator.py",
+          "line": 133,
+          "quote": "revenue_summary = analysis_tools._results.get(\"revenue_summary\", {})"
+        },
+        {
+          "file": "battery_agent/agents/recommendations.py",
+          "line": 62,
+          "quote": "rec_tools._results.clear()"
+        }
+      ]
+    }
+  ]
+}

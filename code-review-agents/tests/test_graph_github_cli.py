@@ -54,7 +54,11 @@ def _review(root, runner, tmp_path, **kw):
 def test_general_lenses_run_and_rag_pack_is_skipped_for_a_plain_repo(repo_factory, tmp_path):
     runner = RecordingRunner()
     review = _review(repo_factory(PLAIN), runner, tmp_path)
-    assert set(runner.seen) == {"objective", "approach", "scalability", "accuracy", "governance", "reliability"}
+    assert set(runner.seen) == {
+        "objective", "approach",                                                                # product
+        "design-patterns", "extensibility", "robustness", "maintainability", "reliability",    # engineering
+        "scalability", "accuracy", "governance",                                               # operations
+    }
     for lens in ("rag-corpus", "rag-retrieval", "rag-generation", "rag-evals", "rag-scale"):
         assert review.lens_status[lens]["status"] == "skipped"
     assert "No RAG pipeline detected" in review.lens_status["rag-retrieval"]["detail"]
@@ -70,7 +74,7 @@ def test_lenses_fan_out_in_parallel(repo_factory, tmp_path):
     runner = RecordingRunner()
     _review(repo_factory(PLAIN), runner, tmp_path)
     assert len(runner.threads) >= 1  # LangGraph schedules Send tasks on its executor; at least one worker ran every lens
-    assert len(runner.seen) == 6
+    assert len(runner.seen) == 10
 
 
 def test_one_failing_lens_does_not_sink_the_review(repo_factory, tmp_path):

@@ -229,3 +229,27 @@ def test_output_is_deterministic_regardless_of_input_order(repo_factory):
         random.Random(seed).shuffle(shuffled)
         hashes.add(_run(repo_factory, [LensReport(lens="accuracy", findings=shuffled)], root=root).content_hash())
     assert len(hashes) == 1
+
+
+def test_inline_budget_keeps_severe_findings_and_reserves_room_for_every_dimension():
+    from code_review_agents.synthesis.merge import select_inline
+
+    def f(lens, sev, i):
+        return finding(lens=lens, severity=sev, title=f"t{i}", claim=f"c{i}", dedupe_key=f"k{i}")
+
+    ranked = [f("governance", "critical", 0)] + [f("accuracy", "medium", i) for i in range(1, 9)] + [
+        f("maintainability", "medium", 20), f("extensibility", "low", 21), f("objective", "medium", 22), f("design-patterns", "nit", 23)]
+    select_inline(ranked, budget=5, min_confidence=0.5)
+    picked = [x.lens for x in ranked if x.inline]
+    assert len(picked) == 5 and picked[0] == "governance"
+    assert "maintainability" in picked and "extensibility" in picked and "objective" in picked  # not crowded out by accuracy
+    assert "design-patterns" not in picked  # nits never go inline
+
+
+def test_inline_reserve_prefers_lenses_not_yet_represented():
+    from code_review_agents.synthesis.merge import select_inline
+
+    ranked = [finding(lens="robustness", title=f"r{i}", claim=f"r{i}", dedupe_key=f"r{i}") for i in range(3)]
+    ranked.append(finding(lens="design-patterns", title="dp", claim="dp", dedupe_key="dp"))
+    select_inline(ranked, budget=2, min_confidence=0.5)
+    assert sorted(x.lens for x in ranked if x.inline) == ["design-patterns", "robustness"]

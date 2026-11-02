@@ -2,9 +2,14 @@
 
 A convention-aware, multi-agent code reviewer. Point it at a repo (or a PR) and it:
 
-1. **scouts** the repo once (file map, stack, static checks, whether a RAG pipeline or an LLM tool-loop exists),
+1. **scouts** the repo once (file map, stack, static checks, structure metrics, whether a RAG pipeline or an LLM tool-loop exists),
 2. **harvests team conventions** and asks a human only about what it cannot read,
-3. **fans out specialist lens agents in parallel** (objective, approach, scalability, accuracy, governance, reliability; plus agentic and RAG packs when they apply),
+3. **fans out specialist lens agents in parallel** across three always-on dimensions:
+   - **product**: objective & fit, approach & architecture
+   - **engineering quality**: design patterns & abstractions, extensibility & modularity, robustness & error handling, maintainability & readability, testing & observability
+   - **operations**: scalability & cost, accuracy & correctness, security, privacy & governance
+
+   plus LLM/agent and RAG packs that run only when the scout finds evidence for them,
 4. **synthesizes** one review in plain code: verifies every evidence anchor, merges duplicates, surfaces tradeoffs, ranks,
 5. writes a review document (high-level verdict first, then specific comments per lens), a JSON, and a GitHub PR review payload.
 
@@ -14,10 +19,12 @@ Design rationale and the full feature list: [DESIGN.md](DESIGN.md). A real run i
 flowchart LR
   S[Scout<br/>map, stack, static checks] --> G[Convention gate<br/>harvest, infer, mine, ask]
   G --> P[Plan lenses<br/>RAG? LLM calls?]
-  P -->|one task per lens| L1[General x6]
-  P --> L2[Agentic x2]
-  P --> L3[RAG x5]
-  L1 & L2 & L3 --> Y[Synthesize<br/>verify, merge, rank - no LLM]
+  P -->|one task per lens| L0[Product x2]
+  P --> L1[Engineering x5]
+  P --> L4[Operations x3]
+  P -.if LLM calls.-> L2[Agentic x2]
+  P -.if RAG found.-> L3[RAG x5]
+  L0 & L1 & L4 & L2 & L3 --> Y[Synthesize<br/>verify, merge, rank - no LLM]
   Y --> O[review.md / review.json / PR payload]
 ```
 
@@ -56,14 +63,14 @@ q-logging: ignore
 
 ```
 src/code_review_agents/
-  scout/        snapshot, stack, topology (RAG/LLM detection), redact, static_checks
+  scout/        snapshot, stack, topology (RAG/LLM detection), structure (complexity, coupling, cycles), redact, static_checks
   conventions/  harvest (declared + inferred), history (PR mining), gate (questions, answers, cache)
-  lenses/       catalog (13 lens prompts, 3 packs), context pack, read-only tools, runners
+  lenses/       catalog (17 lens prompts in 5 dimensions), context pack, read-only tools, runners
   synthesis/    merge: anchors, suppressions, layering, dedupe, conflicts, ranking
   render/       review.md
   github/       diff-line mapping, review payload, posting, baseline branches
   graph.py      LangGraph orchestration      cli.py / api.py   entry points
-tests/          91 tests; no network or API key needed
+tests/          100 tests; no network or API key needed
 ```
 
 ## Tests
@@ -77,6 +84,7 @@ The Anthropic tool-loop is tested against a scripted fake client, the GitHub pos
 ## Known limits
 
 - **The lens agents have not been run against the live Anthropic API.** `AnthropicLensRunner` is unit-tested with a scripted client only. Its first live run may surface API details (tool-schema acceptance, whether a newer model rejects `temperature`; pass `temperature=None` if so). Lens quality (precision/recall) has not been measured; see DESIGN.md for the eval plan.
-- Convention *inference* covers Python only; declared-config harvesting also covers JS/TS configs.
+- Convention *inference* and structure metrics cover Python only; declared-config harvesting also covers JS/TS configs.
+- The engineering-lens prompts (design patterns, extensibility, robustness, maintainability) are new and unevaluated.
 - The RAG lens prompts have not been exercised on a real RAG repo.
 - Merge thresholds (title/claim similarity 0.30 near the same lines, 0.65 anywhere) are untuned.

@@ -18,7 +18,9 @@ from pathlib import PurePosixPath
 
 from ..models import Evidence, Finding
 from .redact import find_secrets, is_env_file, is_placeholder, parse_env_lines, redact_secrets
+from .pyimports import _module_name, _resolve_imports
 from .snapshot import Snapshot, _git, is_vendored_or_generated
+from .structure import check_import_cycles
 from .stack import StackInfo
 from .topology import Topology
 
@@ -201,13 +203,6 @@ def check_personal_config(snap: Snapshot, stack: StackInfo) -> list[Finding]:
 # ---------------------------------------------------------------------------
 # 4. Environment read at import time, before load_dotenv()
 # ---------------------------------------------------------------------------
-def _module_name(path: str) -> str:
-    parts = list(PurePosixPath(path).with_suffix("").parts)
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
-    return ".".join(parts)
-
-
 def _walk_import_time(node: ast.AST) -> Iterator[ast.AST]:
     """Yield nodes that execute at import (module/class level), skipping function bodies."""
     for child in ast.iter_child_nodes(node):
@@ -230,28 +225,6 @@ def _env_read(node: ast.AST) -> str | None:
             return node.slice.value
         return "?"
     return None
-
-
-def _resolve_imports(snap: Snapshot, index: dict[str, str], path: str, node: ast.stmt) -> list[str]:
-    cur = _module_name(path)
-    is_pkg = path.endswith("__init__.py")
-    candidates: list[str] = []
-    if isinstance(node, ast.Import):
-        for alias in node.names:
-            candidates.append(alias.name)
-    elif isinstance(node, ast.ImportFrom):
-        if node.level:
-            pkg_parts = (cur if is_pkg else cur.rpartition(".")[0]).split(".") if cur else []
-            pkg_parts = [p for p in pkg_parts if p]
-            pkg_parts = pkg_parts[: len(pkg_parts) - (node.level - 1)] if node.level > 1 else pkg_parts
-            base = ".".join(pkg_parts + ([node.module] if node.module else []))
-        else:
-            base = node.module or ""
-        if base:
-            candidates.append(base)
-        for alias in node.names:
-            candidates.append(f"{base}.{alias.name}" if base else alias.name)
-    return [index[c] for c in candidates if c in index]
 
 
 def check_env_before_dotenv(snap: Snapshot, stack: StackInfo) -> list[Finding]:
@@ -536,6 +509,7 @@ def check_duplicate_readmes(snap: Snapshot, stack: StackInfo) -> list[Finding]:
 
 
 CHECKS = [
+    check_import_cycles,
     check_committed_secrets,
     check_tracked_artifacts,
     check_personal_config,
