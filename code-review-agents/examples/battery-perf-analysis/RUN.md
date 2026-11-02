@@ -5,7 +5,7 @@ Reviewed commit `79dea22` (34 tracked files, 2,354 lines of Python, no PRs, no t
 Two reviews were posted, each on its own review-only draft PR (do not merge):
 
 - [PR #1](https://github.com/niranjani23/multi-agent-battery-perf-analysis/pull/1): lens prompts v1, 8 lenses, 34 findings, 12 inline comments.
-- PR #2 (link added on posting): lens prompts v2 with the engineering-quality dimension (design patterns, extensibility, robustness, maintainability), 12 lenses, 41 findings, 16 inline comments (`--max-inline 16`). The files in `output/` are from this run.
+- [PR #2](https://github.com/niranjani23/multi-agent-battery-perf-analysis/pull/2): lens prompts v2 with the engineering-quality dimension (design patterns, extensibility, robustness, maintainability), 12 lenses, 41 findings, 16 inline comments (`--max-inline 16`). The files in `output/` are from this run.
 
 ## What is here
 
